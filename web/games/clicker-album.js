@@ -19,6 +19,8 @@
   якість — з catalog.album.stoveQuality.
 */
 (() => {
+  // «Туди» (09.11): горно — звідки якість і вироби; Ремесло ще закрите — просто текст.
+  const toKiln = (st, api, html) => (api.toLink && api.toOpen(st, 'craft') ? api.toLink(html, { tab: 'craft', el: '[data-slot="kiln"]', at: 'Ремесло · горно' }) : html);
   const MASTERY_AT = [5, 15, 40, 100, 200, 400, 700, 1200, 2000, 3500];
   const RING_R = 16;
   const RING_LEN = 2 * Math.PI * RING_R;
@@ -309,8 +311,11 @@
       const stars = a.stars.length && a.stars.every((m) => (m >> c) & 1);
       // Повний стовпчик дає +6 % лише в «домашньому» альбомі; у світі він — частина «альбому світу».
       const lock = shut[c];
-      return '<div class="clka-colh' + (full ? ' full' : '') + (stars ? ' stars' : '') + (lock ? ' shut' : '') + '" title="' + esc(styleName(st, k)
-        + (lock ? ' — щабель «' + lock + '» ще не відкрито: розпис привезуть, коли купиш цей щабель у Майстерні' : '')
+      // Закритий стовпчик — перехід до щабля (09.11); підказка лишається своя, лише з «дотик — туди».
+      const go = lock ? tierGo(st, api, k) : null;
+      return '<div class="clka-colh' + (full ? ' full' : '') + (stars ? ' stars' : '') + (lock ? ' shut' : '') + '"'
+        + (go ? api.to(Object.assign({}, go, { at: '' })) : '') + ' title="' + esc(styleName(st, k)
+        + (lock ? ' — щабель «' + lock + '» ще не відкрито: розпис привезуть, коли купиш цей щабель у Майстерні' + (go ? ' (дотик — туди)' : '') : '')
         + (full ? (c < HC ? ' — стовпчик зібрано, +' + pct(api, bonusOf(st, 'column', 0.06)) : ' — стовпчик зібрано') : '')) + '">'
         + api.jugSvg(k, 'clka-colj', 'alb-h-' + (k || 'plain'), '') + (lock ? '<i class="clka-lock" aria-label="щабель закрито">🔒</i>' : '') + '</div>';
     };
@@ -385,6 +390,12 @@
     if (!s || !s.tier || s.owned) return '';
     const u = st.ups && st.ups[s.tier];
     return u && u.level > 0 ? '' : (u && u.name) || s.tier;
+  }
+  /// «Туди» (09.11): закритий розпис веде до свого щабля в Майстерні (картка верстата data-buy; нема — сама Майстерня).
+  function tierGo(st, api, key) {
+    const s = key && (st.styleList || []).find((x) => x.key === key);
+    if (!s || !s.tier || !api.to || !api.toOpen(st, 'shop')) return null;
+    return { tab: 'shop', el: '[data-buy="' + s.tier + '"]|.clk-shop', at: 'Майстерня · щабель «' + shutStyle(st, key) + '»' };
   }
 
   /// Смужка над сіткою: «🌍 Світ: N з M» і кнопка показати чи згорнути стовпчики світу. Згортання — лише клас на
@@ -583,7 +594,7 @@
           + pct(api, bonusOf(st, 'stoveRing', 0.1)) + ' замість +' + pct(api, bonusOf(st, 'stoveFull', 0.05)) + '.') + '</div>'
       : tiles.length
         ? '<div class="clka-tiles">' + tiles.map((t) => tileBtn(t, 'у піч')).join('') + '</div>'
-        : '<div class="clk-teaser muted small">Добрих кахлів у коморі нема. Кахля відкривається на 500 млн глеків за весь час; обпали її якості '
+        : '<div class="clk-teaser muted small">Добрих кахлів у коморі нема. Кахля відкривається на 500 млн глеків за весь час; ' + toKiln(st, api, 'обпали її') + ' якості '
           + '«добра» чи кращої — і вставляй сюди. Звичайну піч не приймає: гості ж дивляться.</div>';
     const byQ = [];
     for (let q = topQuality(st); q >= 2; q--) {
@@ -641,7 +652,7 @@
         + tileChip(api, t.style, t.q, 's-' + slot + '-' + t.key.replace(/[^a-z0-9]/gi, '-'))
         + '<span><b>' + esc(styleName(st, t.style)) + '</b><i class="muted small">' + QUALITY_F[t.q] + ' · +' + pct(api, tileBonus(st, t.q)) + ' · ×' + t.n + '</i></span>'
         + '<span class="clk-price done">поставити</span></button>').join('') + '</div>'
-      : '<div class="clk-teaser muted small">Іншої кахлі в коморі нема — обпали ще кахлів.</div>';
+      : '<div class="clk-teaser muted small">Іншої кахлі в коморі нема — ' + toKiln(st, api, 'обпали ще кахлів') + '.</div>';
     api.overlay(st, h, { cls: 'clka-ov' });
     for (const b of document.querySelectorAll('.clka-ov .clka-tilebtn[data-key]')) {
       b.onclick = () => tileAct(st, api, { op: 'tile', slot, key: b.dataset.key }).then((r) => { if (r && r.ok) api.closeOverlay(st); });
@@ -775,7 +786,8 @@
       ? '<button type="button" class="' + (open ? 'ghost' : 'primary') + ' small clka-form"' + (st.mine ? '' : ' disabled') + '>'
         + (api.onWheel(st, w.key, k) ? '🏺 Уже на колі — як обпалити' : st.craft.ware === w.key && k ? '🎨 Розпис «' + esc(styleName(st, k)) + '» на партію'
           : '🏺 Ліпити ' + esc(String(w.name).toLowerCase().replace(/а$/, 'у').replace(/я$/, 'ю'))) + '</button>'
-        + (k && !open && lock ? '<span class="muted small">🔒 розпис «' + esc(styleName(st, k)) + '» ще не відкрито (щабель «' + esc(lock) + '»)</span>' : '')
+        + (k && !open && lock ? '<span class="muted small">🔒 розпис «' + esc(styleName(st, k)) + '» ще не відкрито ('
+          + (tierGo(st, api, k) ? api.toLink('щабель «' + esc(lock) + '»', tierGo(st, api, k)) : 'щабель «' + esc(lock) + '»') + ')</span>' : '')
       : '<span class="muted small">' + esc(w.name) + ' відкриється на ' + esc(api.potsShort(cw.unlock || 0)) + ' за весь час</span>';
     api.overlay(st, '<div class="clka-card' + (open ? ' open' : '') + '">'
       + '<div class="clka-cardpic">' + api.wareSvg(w.key, { style: open ? k : '', quality: star ? 3 : 1, cls: 'clka-big' + (open ? '' : ' shadow'), slot: 'alb-card' }) + '</div>'

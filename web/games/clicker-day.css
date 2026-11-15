@@ -99,6 +99,11 @@
 .clkch-n { flex: none; min-width: 3.2em; text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
 .clkch-row.done .clkch-tx > div:first-child { opacity: .65; text-decoration: line-through; }
 .clkch-row.done .clkch-n { color: var(--accent2); }
+/* 09.11: невиконане доручення — рядок-перехід туди, де воно робиться (api.to); «›» праворуч, де саме — у підказці. */
+.clkch-row[role="link"] { cursor: pointer; margin: 0 -6px; padding: 6px; border-radius: 8px; }
+.clkch-row[role="link"]:hover { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.clk .clkch-row[role="link"]:focus-visible { outline-offset: -2px; }
+.clkch-go { flex: none; color: var(--accent); font-size: 22px; line-height: 1; margin-left: -4px; }
 .clkch-bar { height: 5px; margin-top: 4px; border-radius: 3px; background: var(--panel2); overflow: hidden; }
 .clkch-bar > i { display: block; height: 100%; background: var(--accent2); transition: width .3s; }
 .clkch-streak { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin: 8px 0 4px; }

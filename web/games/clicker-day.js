@@ -20,6 +20,11 @@
   const PTS_Q3 = 1, PTS_Q4 = 3;
   const MEDAL = ['🥇', '🥈', '🥉'];
   const FEW = { 2: 'двоє', 3: 'троє', 4: 'четверо', 5: 'п\'ятеро' };
+  // «Туди» (09.11, api.toLink): горно, полиця над колом і комора — звідки набирають очки дня й довозять спільне замовлення.
+  const KILN = { tab: 'craft', el: '[data-slot="kiln"]', at: 'Ремесло · горно' };
+  const SHELF = { el: '.clk-stage', at: 'коло · полиця' };
+  const STORE = { tab: 'craft', el: '[data-slot="store"]', at: 'Ремесло · комора' };
+  const toLink = (st, api, html, w) => (api.toLink && api.toOpen(st, w.tab) ? api.toLink(html, w) : html);
 
   let hhmm = null;
   /// «23:30» беремо з самого ends (київський час), а не пишемо руками: межу доби тримає сервер.
@@ -188,7 +193,7 @@
     const mineLine = !w.person ? '' : c.mine >= c.min
       ? '<div class="small">Твій внесок: <b>' + api.num(c.mine) + '</b> ✓ <span class="muted">— на бонус вистачає</span></div>'
       : '<div class="small">Твій внесок: <b>' + api.num(c.mine) + '</b> <span class="muted">— до бонусу ще ' + api.num(c.min - c.mine) + ' (від ' + api.num(c.min) + ', це 5 %)'
-        + (free + c.mine >= c.min ? ', у коморі вистачає' : free > 0 ? ', у коморі не вистачає' : '') + '</span></div>';
+        + (free + c.mine >= c.min ? ', у коморі вистачає' : free > 0 ? ', у ' + toLink(st, api, 'коморі', STORE) + ' не вистачає' : '') + '</span></div>';
     const btn = !can ? '' : '<div class="clkmd-coop"><button type="button" class="clkmd-coopbtn" data-coop="' + send + '"' + (send > 0 ? '' : ' disabled') + '>'
       + (send > 0 ? '🤝 Довезти ' + api.num(send) : room <= 0 ? 'Стелю довезено' : 'Нема вільних') + '</button>'
       + '<span class="small muted">вільних у коморі: ' + api.num(free) + ' (відкладене під замовлення й Толоку не чіпаю)'
@@ -287,9 +292,9 @@
       + '</div>';
     const body = onWeek ? weekHtml(st, api) : tab === d
       ? boardHtml(st, api, d, 'Сьогодні ще ніхто не набрав очок — перше дзвінке горно виведе тебе нагору.') + prizeLine(st, api, d, d.feast, '🎉 Свято')
-        + '<div class="small muted clkmd-how">Як набирати: ручне горно — дзвінкий 1, розкішний 3; палій і підмайстри не рахуються.</div>'
+        + '<div class="small muted clkmd-how">Як набирати: ' + toLink(st, api, 'ручне горно', KILN) + ' — дзвінкий 1, розкішний 3; палій і підмайстри не рахуються.</div>'
       : boardHtml(st, api, c, 'Сьогодні ще ніхто не ловив — перший глек з полиці, спійманий руками, виведе тебе нагору.') + prizeLine(st, api, c, c.minutes, '🧺 Кошик')
-        + '<div class="small muted clkmd-how">Як набирати: кожен глек з полиці, спійманий руками, — одне очко; комора, кіт і підмайстри не рахуються.</div>';
+        + '<div class="small muted clkmd-how">Як набирати: кожен ' + toLink(st, api, 'глек з полиці', SHELF) + ', спійманий руками, — одне очко; комора, кіт і підмайстри не рахуються.</div>';
     const title = c && wk ? '🏆 Майстер, Ловець і Тиждень' : c ? '🏆 Майстер і Ловець дня' : wk ? '🏆 Майстер дня і Тиждень' : '🏆 Майстер дня';
     const html = api.foldHead(title + head + headC)
       + '<div class="clkmd-body">' + tabs + (onWeek ? '' : me) + body + (onWeek ? '' : lastLine(st, api, tab)) + '</div>';
@@ -455,17 +460,20 @@
   // [3] чарівний глек і бажання (див. нижче) чи відсутнє, [4] черепки скрині [звичайної, сьомого дня] — лише коли можна забирати.
   // Цілі й тексти знає клієнт за кодом: ті самі, що ChoreCatalog / ChoreCodes на сервері.
 
+  // go — куди веде дотик по рядку (api.to: sec — розділ «Села» його рядком переходів, el — вузол у вкладці tab), at — де
+  // це (підказка «Туди: …»). Записка 09.11: «а де знайти загадку Глека?» — доручення казало, що зробити, але не де.
   const CH = {
-    c: { ic: '🤲', tx: 'Спіймай 30 глеків з полиці', g: 30 },
-    g: { ic: '🎪', tx: 'Спіймай 3 розписні глеки', g: 3 },
-    f: { ic: '🔥', tx: 'Обпали руками розписну партію', g: 1 },
-    s: { ic: '🚢', tx: 'Завантаж корабель до повного', g: 1 },
-    v: { ic: '📜', tx: 'Відвези замовлення в село', g: 1 },
-    u: { ic: '🧳', tx: 'Віддай гостю замовлення', g: 1 },
-    t: { ic: '🏗', tx: 'Поклади 20 виробів на Толоку', g: 20 },
-    i: { ic: '🎁', tx: 'Подаруй дарунок другові', g: 1 },
-    e: { ic: '🎉', tx: 'Влаштуй фестиваль', g: 1 },
-    r: { ic: '❓', tx: 'Відповідай на загадку Глека', g: 1 },
+    c: { ic: '🤲', tx: 'Спіймай 30 глеків з полиці', g: 30, go: { el: '.clk-stage', at: 'полиця над колом' } },
+    g: { ic: '🎪', tx: 'Спіймай 3 розписні глеки', g: 3, go: { el: '.clk-stage', at: 'полиця над колом' } },
+    f: { ic: '🔥', tx: 'Обпали руками розписну партію', g: 1, go: { tab: 'craft', el: '[data-slot="kiln"]', at: 'Ремесло · горно' } },
+    s: { ic: '🚢', tx: 'Завантаж корабель до повного', g: 1, go: { sec: 'trade', at: 'Село · Кораблі' } },
+    v: { ic: '📜', tx: 'Відвези замовлення в село', g: 1, go: { sec: 'orders', at: 'Ремесло · Замовлення' } },
+    u: { ic: '🧳', tx: 'Віддай гостю замовлення', g: 1, go: { sec: 'guests', at: 'Село · Гості' } },
+    t: { ic: '🏗', tx: 'Поклади 20 виробів на Толоку', g: 20, go: { sec: 'toloka', at: 'Село · Толока' } },
+    i: { ic: '🎁', tx: 'Подаруй дарунок другові', g: 1, go: { tab: 'guild', el: '.clkg-gifts', at: 'Село · Дарунки' } },
+    // Кнопка «Почати фестиваль» — у Толоці, коли фестивальну сцену збудовано; ні — сама Толока.
+    e: { ic: '🎉', tx: 'Влаштуй фестиваль', g: 1, go: { tab: 'guild', el: '.clkl-fest|[data-sec="toloka"]', at: 'Село · Толока' } },
+    r: { ic: '❓', tx: 'Відповідай на загадку Глека', g: 1, go: { tab: 'album', el: '.clka-riddle', at: 'Альбом · Зала скарбів' } },
   };
   const STREAK_MAX = 7;
 
@@ -531,11 +539,15 @@
     place(st, st.choresEl);
     const esc = (x) => api.esc(st, x);
     const done = c.tasks.filter((t) => t.n >= t.d.g).length;
+    // Невиконане доручення — рядок-перехід (api.to, клік ловить ядро): «›» праворуч, де саме — у підказці. Виконане — ні.
     const rows = c.tasks.map((t) => {
       const ok = t.n >= t.d.g;
-      return '<div class="clkch-row' + (ok ? ' done' : '') + '"><span class="clkch-ic">' + t.d.ic + '</span>'
-        + '<div class="clkch-tx"><div>' + esc(t.d.tx) + '</div><div class="clkch-bar"><i style="width:' + Math.round(100 * t.n / t.d.g) + '%"></i></div></div>'
-        + '<span class="clkch-n">' + (ok ? '✓' : t.n + '/' + t.d.g) + '</span></div>';
+      const go = !ok && t.d.go && api.to;
+      return '<div class="clkch-row' + (ok ? ' done' : '') + '"' + (go ? api.to(t.d.go) : '') + '><span class="clkch-ic">' + t.d.ic + '</span>'
+        + '<div class="clkch-tx"><div>' + esc(t.d.tx) + '</div>'
+        + '<div class="clkch-bar"><i style="width:' + Math.round(100 * t.n / t.d.g) + '%"></i></div></div>'
+        + '<span class="clkch-n">' + (ok ? '✓' : t.n + '/' + t.d.g) + '</span>'
+        + (go ? '<span class="clkch-go" aria-hidden="true">›</span>' : '') + '</div>';
     }).join('');
     // Сім кружечків серії: пройдені залиті, наступний — кільцем, сьомий — корона.
     const next = c.taken ? 0 : c.streak + 1;

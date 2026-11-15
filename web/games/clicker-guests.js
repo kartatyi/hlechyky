@@ -17,6 +17,8 @@
 (() => {
   /// Натиск на джойстику — теж людина (див. clicker.js): скрізь, де потрібна справжня рука, — human(), а не isTrusted.
   const human = HGames.ui.human;
+  // «Туди» (09.11): горно — звідки якість і вироби; Ремесло ще закрите — просто текст.
+  const toKiln = (st, api, html) => (api.toLink && api.toOpen(st, 'craft') ? api.toLink(html, { tab: 'craft', el: '[data-slot="kiln"]', at: 'Ремесло · горно' }) : html);
 
   const SEEN_KEY = 'clk.guests.met';
   const FRESH_MS = 30 * 60 * 1000;        // прибуття, давніше за пів години, — уже не новина (інший пристрій, F5 наступного дня)
@@ -157,7 +159,7 @@
       + (armed ? 'Точно?' : 'Відпустити') + '</button>'
       + '<span class="clkd-otime small muted" title="Скільки ще гість чекатиме">⏳ <i class="clkd-cd" data-at="' + o.until + '" data-done="відплив"></i></span>'
       + '</div>'
-      + (ready || o.q < 4 ? '' : '<div class="clkd-ohint muted small">розкішні бувають лише з розписаної партії</div>')
+      + (ready || o.q < 4 ? '' : '<div class="clkd-ohint muted small">розкішні бувають лише з ' + toKiln(st, api, 'розписаної партії') + '</div>')
       + '</div></div>';
   }
 

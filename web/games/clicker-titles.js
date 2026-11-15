@@ -10,6 +10,7 @@
   Нове звання — тост, іскри, рядок у стрічці (пам'ятаємо в localStorage, тож F5 не повторює).
   Дані: свій вид — view.titles, спільне — дошка з GET /api/games/clicker/guild (st.guildRoster.titles, тягне цех).
   Дія: titles { op: 'show', keys: [...] }.
+  «Туди» (09.11): рядок звання, яке ще можна вибити чи відбити, веде туди, де його заробляють (GO нижче; api.to — ядро).
 */
 (() => {
   const human = HGames.ui.human;
@@ -21,6 +22,43 @@
     { kind: 'secret', title: '🙈 Таємні', note: 'умову видно, щойно хтось в окрузі вибив звання першим' },
     { kind: 'memory', title: '🎖 Пам\'ятні', note: 'лише для тих, хто грав до звань, — більше не вибити' },
   ];
+  /// Куди веде рядок звання: де заробляється те, що воно вимагає. Взято з каталогу ClickerTitles.cs (key → що вимагає;
+  /// хуки TitlesCheck / Sync / Spin / Catch / Fire / KilnFinish / Pet / Buy / GuildGiftTo) і з розмітки частин:
+  /// горно — [data-slot="kiln"] (Ремесло); обпал майстерні (Клейма, «Почати наново») — .clk-firebox; полиця й коло — .clk-stage;
+  /// альбом — .clka-gridbox; секрети — .clk-secrets (Клейма); оздоба й дивовижі — .clk-looks / .clk-wonders (Майстерня · Хата);
+  /// дарунки — .clkg-gifts; Шана старійшини — .clkg-shana; розділи «Села» й замовлення сіл — sec (рядок переходів).
+  /// Без переходу: rising («Висхідна зірка» — приріст за день, окремої дії нема), пам'ятні (більше не вибити).
+  const FIRE = { tab: 'fire', el: '.clk-firebox', at: 'Клейма · обпал' };
+  const KILN = { tab: 'craft', el: '[data-slot="kiln"]', at: 'Ремесло · горно' };
+  const SHELF = { el: '.clk-stage', at: 'полиця над колом' };
+  const CIRCLE = { el: '.clk-stage', at: 'коло' };
+  const CAT = { el: '.clk-stage', at: 'коло · кіт-мандрівник' };
+  const GIFTS = { tab: 'guild', el: '.clkg-gifts', at: 'Село · Дарунки' };
+  const ALBUM = { tab: 'album', el: '.clka-gridbox', at: 'Альбом · клітинки' };
+  const SHANA = { tab: 'guild', el: '.clkg-shana|[data-fold="g.rank"]', at: 'Село · Шана старійшини' }; // до Старійшини шани нема — картка рангу
+  const WONDERS = { tab: 'shop', el: '.clk-wonders|[data-sec="house"]', at: 'Майстерня · Хата · Дивовижі' };
+  const GO = {
+    // 👑 перші в окрузі
+    first: FIRE, hunter: SHELF, collector: ALBUM,
+    lord: { tab: 'shop', el: '.clk-looks|[data-sec="house"]', at: 'Майстерня · Хата · Оздоба' },
+    sage: { tab: 'fire', el: '.clk-secrets', at: 'Клейма · Секрети' },
+    kilnlord: KILN, generous: GIFTS,
+    host: { sec: 'guests', at: 'Село · Гості' },
+    fairman: { sec: 'orders', at: 'Ремесло · Замовлення' },
+    lucky: CIRCLE, catlover: CAT, wonderer: WONDERS,
+    pillar: { sec: 'wagon', at: 'Село · Віз' },
+    // ⭐ звання дня (rising — без переходу)
+    rooster: CIRCLE, night: CIRCLE, bee: CIRCLE, catch: SHELF,
+    // 🏅 рідкісні
+    sich: { tab: 'shop', el: '.clk-urow[data-row="sich"]|.clk-shop', at: 'Майстерня · Гончарня на Січі' },
+    tenk: FIRE, hundred: SHELF, album: ALBUM, stars: ALBUM, wonders: WONDERS,
+    flawless: KILN, suns: CIRCLE, moment: SHELF,
+    oboz: SHANA, kindsoul: SHANA, legend: SHANA,
+    // 🙈 таємні (x1…x10 — лише відкриті, див. kindHtml)
+    x1: SHELF, x2: SHELF, x3: CAT, x4: KILN, x5: FIRE, x6: FIRE,
+    x7: { tab: 'shop', el: '.clk-shop', at: 'Майстерня · верстати' },
+    x8: GIFTS, x9: GIFTS, x10: KILN,
+  };
   const OPEN_KEY = 'clk.titles.open';
   const SEEN_KEY = 'clk.titles.seen';
 
@@ -85,11 +123,20 @@
       + '</div>';
   }
 
-  function rowHtml(st, api, t, who, extra, mine) {
+  /// Куди веде звання (GO), якщо туди зараз можна дістатись: вкладка цілі відкрита гравцеві; нема api.to — без переходу.
+  function goOf(st, api, key) {
+    const w = GO[key];
+    if (!w || !api.to) return null;
+    const tab = w.tab || (w.sec ? (w.sec === 'orders' ? 'craft' : 'guild') : null);
+    return api.toOpen && !api.toOpen(st, tab) ? null : w;
+  }
+
+  /// Рядок звання. go — куди веде дотик (api.to, клік ловить ядро): «›» праворуч, де саме — у підказці.
+  function rowHtml(st, api, t, who, extra, mine, go) {
     const esc = (x) => api.esc(st, x);
-    return '<div class="clkt-row' + (mine ? ' mine' : '') + '"><span class="clkt-ico">' + t.icon + '</span>'
+    return '<div class="clkt-row' + (mine ? ' mine' : '') + (go ? ' go' : '') + '"' + (go ? api.to(go) : '') + '><span class="clkt-ico">' + t.icon + '</span>'
       + '<div class="clkt-txt"><b>' + esc(t.name) + '</b><span class="muted small">' + esc(t.desc || '') + '</span>' + (extra || '') + '</div>'
-      + '<div class="clkt-who small">' + who + '</div></div>';
+      + '<div class="clkt-who small">' + who + '</div>' + (go ? '<span class="clkt-go" aria-hidden="true">›</span>' : '') + '</div>';
   }
 
   function bar(api, have, need) {
@@ -117,7 +164,7 @@
         const who = own ? '<b class="clkt-you">ти</b> · ' + val(api, key, my)
           : h ? esc(h.nick) + ' · ' + val(api, key, h.v) + (my > 0 ? '<br><span class="muted">у тебе ' + val(api, key, my) + '</span>' : '')
             : b ? '<span class="muted">ще нікому</span>' : '<span class="muted">…</span>';
-        rows += rowHtml(st, api, raw, who, '', own);
+        rows += rowHtml(st, api, raw, who, '', own, goOf(st, api, key));
       } else if (k.kind === 'day') {
         const h = b && b.days && b.days[key];
         const lead = b && b.lead && b.lead[key];
@@ -126,13 +173,13 @@
           ? '<span class="muted small">сьогодні веде: ' + (lead.nick && myIs(st, lead.nick) ? 'ти' : esc(lead.nick)) + ' · ' + val(api, key, lead.v)
             + (my > 0 && !(lead.nick && myIs(st, lead.nick)) ? ' · у тебе ' + val(api, key, my) : '') + '</span>'
           : my > 0 ? '<span class="muted small">у тебе сьогодні ' + val(api, key, my) + '</span>' : '';
-        rows += rowHtml(st, api, raw, who, today, own);
+        rows += rowHtml(st, api, raw, who, today, own, goOf(st, api, key));
       } else if (k.kind === 'rare') {
         const at = v.earned[key];
         const p = v.progress[key];
         const who = own ? '✓ <span class="muted">' + esc(date(at)) + '</span>' : first(st, api, key);
         const extra = !own && p && p[1] > 1 ? bar(api, p[0], p[1]) : '';
-        rows += rowHtml(st, api, raw, who, extra, own);
+        rows += rowHtml(st, api, raw, who, extra, own, own ? null : goOf(st, api, key));
       } else if (k.kind === 'secret') {
         const t = def(st, key);
         if (!t) { hidden++; continue; }
@@ -140,7 +187,8 @@
         const who = own ? '✓' + (v.earned[key] ? ' <span class="muted">' + esc(date(v.earned[key])) + '</span>' : '') : first(st, api, key);
         // Уже не вибити (напр. «Вічний учень» після майстерштука) — кажемо прямо, а не лишаємо порожнє місце смуги.
         const gone = !own && v.gone.includes(key) ? '<span class="muted small">уже не взяти: майстерштук здано, а ранг у цеху назад не падає</span>' : '';
-        rows += rowHtml(st, api, t, who, gone || (!own && p && p[1] > 1 ? bar(api, p[0], p[1]) : ''), own);
+        rows += rowHtml(st, api, t, who, gone || (!own && p && p[1] > 1 ? bar(api, p[0], p[1]) : ''), own,
+          own || gone ? null : goOf(st, api, key));
       } else {
         const who = own ? '✓' : '<span class="muted">—</span>';
         rows += rowHtml(st, api, raw, who, '', own);

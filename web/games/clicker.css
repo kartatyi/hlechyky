@@ -1483,6 +1483,11 @@
 /* «Глянути» / ★: ціль коротко світиться (lookAt). */
 .clk .clk-look { animation: clkrowflash 1.6s ease-out; }
 @media (prefers-reduced-motion: reduce) { .clk .clk-look { animation: none; outline: 2px solid var(--accent); } }
+/* «Туди» (09.11, api.to): текст «що зробити» веде туди, де це робиться; «›» праворуч, де саме — у підказці (title). */
+.clk .clk-to { cursor: pointer; color: var(--accent); border-radius: 4px; }
+.clk .clk-to::after { content: '›'; margin-left: .3em; font-weight: 700; }
+.clk .clk-to:hover { text-decoration: underline; }
+.clk [data-to]:focus-visible, .clk [data-to-sec]:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 /* ---- хата й клейма ---- */
 .clk-cfore { color: var(--accent2); line-height: 1.25; }

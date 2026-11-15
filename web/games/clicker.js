@@ -2137,10 +2137,17 @@
     // Купці в дорозі згорять — порада видна й до першого натиску, а не лише в переліку «Точно?» (v12 §2.2).
     const wait = !armed && gain >= 1 && !tiny && st.taken && st.taken.length
       ? '<div class="clk-loss-tip">🐴 У дорозі ' + st.taken.length + ' ' + plural(st.taken.length, 'купець', 'купці', 'купців')
-        + ' — обпал ' + (st.taken.length === 1 ? 'його' : 'їх') + ' спалить. Порада: спершу дочекайся купців' + (st.fireMarks === false ? ' і докупи віхи (вони лишаться)' : '') + '.</div>'
+        + ' — обпал ' + (st.taken.length === 1 ? 'його' : 'їх') + ' спалить. Порада: спершу ' + waitTip(st) + '.</div>'
       : '';
     swap(f._after, gain < 1 ? '' : afterFire(st, add, sci) + wait);
     if (f._loss) swap(f._loss, armed ? fireLoss(st) : '');
+  }
+
+  /// «дочекайся купців [і докупи віхи (вони лишаться)]» — обидва переходи в Майстерню (09.11): купці в дорозі — у
+  /// «Вкладі купцям», віхи — над верстатами.
+  function waitTip(st) {
+    return toLink('дочекайся купців', { tab: 'shop', el: '.clk-sec[data-sec="orders"]', at: 'Майстерня · Вклад купцям' })
+      + (st.fireMarks === false ? ' і ' + toLink('докупи віхи', { tab: 'shop', el: '.clk-markbox|.clk-shop', at: 'Майстерня · віхи' }) + ' (вони лишаться)' : '');
   }
 
   /// Друге підтвердження обпалу: що саме згорить і що лишиться (хотфікс B4, 21.10.2026). Раніше кнопка казала лише
@@ -2173,8 +2180,7 @@
       + 'толока, гості й шана сіл' + (st.fireMarks === false ? ', віхи (Пам\'ять рук)' : '');
     // Докупити віхи радимо лише тому, в кого вони переживуть обпал (Пам'ять рук): решті це гроші у вогонь.
     const wait = !st.taken || !st.taken.length ? ''
-      : '<div class="clk-loss-tip">Порада: спершу дочекайся купців' + (st.fireMarks === false ? ' і докупи віхи (вони лишаться)' : '')
-        + ' — тоді нічого не згорить даремно.</div>';
+      : '<div class="clk-loss-tip">Порада: спершу ' + waitTip(st) + ' — тоді нічого не згорить даремно.</div>';
     return '<div class="clk-loss-h">Згорить:</div><ul>' + burn.map((x) => '<li>' + x + '</li>').join('') + '</ul>'
       + '<div class="clk-loss-h">Лишиться:</div><div>' + stay + '.</div>' + wait;
   }
@@ -2845,7 +2851,10 @@
     const more = teaser
       ? '<div class="clk-teaser muted small">' + (H.api.upIcon ? '<span class="clk-uico locked">' + H.api.upIcon(teaser) + '</span>' : '')
         + (gate && ups[prevIdle(ups, teaser)].level > 0
-          ? '⚓ «' + esc(ups[teaser].name || teaser) + '» відкриє будова Толоки «' + esc(gate.name) + '» — вкладка «🤝 Село»'
+          // Будова — посилання «туди» (09.11): Толока в «Селі», де її й ставлять.
+          ? '⚓ «' + esc(ups[teaser].name || teaser) + '» відкриє ' + (toOpen(st, 'guild')
+            ? toLink('будова Толоки «' + esc(gate.name) + '»', { sec: 'toloka', at: 'Село · Толока' })
+            : 'будова Толоки «' + esc(gate.name) + '» — вкладка «🤝 Село»')
           : 'Далі на драбині ще є верстати: наступний відкриється після першого рівня «' + esc(ups[prevIdle(ups, teaser)].name) + '»')
         + '</div>'
       : '';
@@ -2859,7 +2868,10 @@
     const sg = trade && slavaGates.find((g) => ups[g.key] && ups[g.key].open === false);
     const far = sg
       ? '<div class="clk-teaser muted small">' + (H.api.upIcon ? '<span class="clk-uico locked">' + H.api.upIcon(sg.key) + '</span>' : '')
-        + '🌍 Наступна заморська майстерня — ' + esc(sg.name) + ', на Славі ' + count(sg.need) + ' (у тебе ' + count(trade.slava || 0) + ')</div>'
+        // Славу дають кораблі — «на Славі N» веде до них (09.11).
+        + '🌍 Наступна заморська майстерня — ' + esc(sg.name) + ', '
+        + (toOpen(st, 'guild') ? toLink('на Славі ' + count(sg.need), { sec: 'trade', at: 'Село · Кораблі' }) : 'на Славі ' + count(sg.need))
+        + ' (у тебе ' + count(trade.slava || 0) + ')</div>'
       : '';
     const fold = done.length
       ? '<details class="clk-done" data-key="done"><summary>Докачано · ' + done.length + '</summary><div class="clk-donebody">'
@@ -3382,7 +3394,8 @@
     // Оздоба коштує клейм, тож новачкові, який ще не палив, показуємо саму вивіску: вона безплатна.
     const paid = st.stamps > 0 || looks.some((g) => (g.options || []).some((o) => o.owned && o.price > 0));
     const rows = !paid
-      ? '<div class="muted small">Хату можна перебрати під себе — стріха, стіни, тин, дерево, колір кола, масть кота з собакою. Платиться клеймами, тож спершу обпал.</div>'
+      ? '<div class="muted small">Хату можна перебрати під себе — стріха, стіни, тин, дерево, колір кола, масть кота з собакою. Платиться клеймами, тож спершу '
+        + (toOpen(st, 'fire') ? toLink('обпал', { tab: 'fire', el: '.clk-firebox', at: 'Клейма · обпал' }) : 'обпал') + '.</div>'
       : looks.map((g) => '<div class="clk-lookrow"><span class="clk-lookname">' + esc(g.name)
       + '<span class="muted small"> · ' + esc(g.desc) + '</span></span><span class="clk-lookopts">'
       + (g.options || []).map((o) => '<button type="button" class="clk-lookopt' + (g.value === o.value ? ' on' : '')
@@ -4053,6 +4066,16 @@
     fold: foldAttr, foldHead,
     /// Розгорнути картку-згортку, якщо згорнута (кнопка «туди» з іншого місця кола — напр. піч у хаті → Альбом).
     unfold: (st, card) => { if (card && card.dataset.fold && isFolded(card)) toggleFold(st, card); },
+    /// «Туди» з рядка «що зробити»: вкладка, розгорнути, «Глянути» (goTo). find — вузол, селектор чи (st) → вузол.
+    goTo: (st, find, tab) => goTo(st, find, tab),
+    /// Атрибути переходу «туди» для розмітки: to({ el, tab, sec, at }) → ' data-to="…" … title="Туди: …"'. Клік ловить ядро.
+    to: (w) => toAttr(w),
+    /// Слова-перехід у тексті підказки (клас clk-to: колір акценту й «›»): toLink(уже екранований html, { el, tab, sec, at }).
+    toLink: (html, w) => toLink(html, w),
+    /// Чи відкрита гравцеві вкладка цілі (ні — переходу не малюємо).
+    toOpen: (st, tab) => toOpen(st, tab),
+    /// Перехід за тією ж ціллю з коду: go(st, { el, tab, sec }).
+    go: (st, w) => goWhere(st, w),
     esc: (st, x) => ((st.ctx && st.ctx.esc) || ((y) => String(y)))(x),
     order: (st, action, payload) => order(st, action, payload),
     /// Дія з відповіддю (Promise): для мінігор, яким треба знати результат. Накопичені кліки летять першими.
@@ -4422,24 +4445,37 @@
     const calm = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const how = calm ? 'auto' : 'smooth';
     requestAnimationFrame(() => {
-      const r = el.getBoundingClientRect();
-      const pane = el.closest('.clk-pane');
-      if (st.el.classList.contains('fit') && pane && pane.scrollHeight > pane.clientHeight + 1) {
-        const pr = pane.getBoundingClientRect();
-        pane.scrollBy({ top: r.top + Math.min(r.height, pr.height) / 2 - (pr.top + pr.height / 2), behavior: how });
-      } else {
-        const band = viewBand();
-        const pin = st.el.querySelector('.clk-pin');
-        // Плашка кола згори з'явиться, щойно сцена піде з екрана, — місце під неї рахуємо наперед.
-        const top = band.top + (pin ? Math.max(pin.getBoundingClientRect().height, 48) : 0);
-        const mid = (top + band.bottom) / 2;
-        window.scrollBy({ top: r.top + Math.min(r.height, band.bottom - top) / 2 - mid, behavior: how });
-      }
+      const a = aimAt(st, el);
+      a.box.scrollBy({ top: a.dy, behavior: how });
       el.classList.remove('clk-look');
       void el.offsetWidth;
       el.classList.add('clk-look');
       setTimeout(() => el.classList.remove('clk-look'), 1800);
     });
+  }
+  /// Куди крутити, щоб ціль стала посередині видимого: box — вікно вкладки (ПК, «в один екран») чи сама сторінка.
+  function aimAt(st, el) {
+    const r = el.getBoundingClientRect();
+    const pane = el.closest('.clk-pane');
+    if (st.el.classList.contains('fit') && pane && pane.scrollHeight > pane.clientHeight + 1) {
+      const pr = pane.getBoundingClientRect();
+      return { box: pane, dy: r.top + Math.min(r.height, pr.height) / 2 - (pr.top + pr.height / 2) };
+    }
+    const band = viewBand();
+    const pin = st.el.querySelector('.clk-pin');
+    // Плашка кола згори з'явиться, щойно сцена піде з екрана, — місце під неї рахуємо наперед.
+    const top = band.top + (pin ? Math.max(pin.getBoundingClientRect().height, 48) : 0);
+    const mid = (top + band.bottom) / 2;
+    return { box: window, dy: r.top + Math.min(r.height, band.bottom - top) / 2 - mid };
+  }
+  /// Поправка після «Туди» (09.11): щойно відкрита вкладка й розгорнуті розділи з content-visibility домальовуються вже
+  /// під час прокрутки, і перша мірка бреше — загадка Глека опинялась під краєм екрана. Ціль далі ніж на 40 px від
+  /// середини — докручуємо (без нового підсвічування).
+  function settleAt(st, el) {
+    if (!el.isConnected || !st.el || !el.getClientRects().length) return;
+    const a = aimAt(st, el);
+    const calm = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (Math.abs(a.dy) > 40) a.box.scrollBy({ top: a.dy, behavior: calm ? 'auto' : 'smooth' });
   }
 
   /// Частина вікна, яку не закривають липка шапка сайту згори й нижнє меню (телефон) знизу, — у px від верху вікна.
@@ -4455,6 +4491,105 @@
       bottom = Math.max(h * 2 / 3, Math.min(h, nav.getBoundingClientRect().top));
     }
     return { top, bottom };
+  }
+
+  /// «Туди» (09.11): з рядка «що зробити» (доручення Глека, підказки) — до місця, де це робиться. Вкладка, згортки й
+  /// <details> над ціллю розгортаються, а тоді «Глянути» (lookAt): посередині видимого й підсвічена. find — вузол,
+  /// селектор у колі чи функція (st) → вузол; tab — вкладка, де ціль з'явиться: частина домальовує розділ, щойно
+  /// вкладку відкрили, тож ціль шукаємо ще з десяток кадрів. false — цілі нема й не буде (гравцеві ще не відкрита).
+  function goTo(st, find, tab, tries = 0) {
+    if (!st.el || !st.el.isConnected) return false;
+    if (!tries) {
+      H.api.sfx('tap');
+      if (tab && st.panes[tab] && !isGated(st, tab)) setTab(st, tab);
+    }
+    const el = typeof find === 'function' ? find(st) : typeof find === 'string' ? st.el.querySelector(find) : find;
+    // Прихована обгортка, що не вкладка (Зала скарбів до першого виробу), — цілі для гравця нема.
+    let hid = !el || !el.isConnected;
+    for (let d = el; !hid && d && d !== st.el; d = d.parentElement) if (d.hidden && !d.classList.contains('clk-pane')) hid = true;
+    if (hid) {
+      if (tries < 12) setTimeout(() => goTo(st, find, null, tries + 1), 100);
+      return tries < 12;
+    }
+    const pane = el.closest('.clk-pane');
+    if (pane && pane.hidden && pane.dataset.pane) {
+      if (isGated(st, pane.dataset.pane)) return false;
+      setTab(st, pane.dataset.pane);
+    }
+    for (let d = el; d && d !== st.el; d = d.parentElement) {
+      if (d.tagName === 'DETAILS' && !d.open) { if (d.classList.contains('clk-old')) st.oldAuto = true; d.open = true; }
+      if (d.dataset && d.dataset.fold && isFolded(d)) toggleFold(st, d);
+    }
+    lookAt(st, el);
+    // Дві поправки, коли плавна прокрутка вже доїхала: розділи, що домалювались дорогою, зсунули ціль (settleAt).
+    setTimeout(() => settleAt(st, el), 650);
+    setTimeout(() => settleAt(st, el), 1300);
+    return true;
+  }
+
+  /// «Туди» розміткою: частина дописує toAttr({ el, tab, sec, at }) у тег, і той стає переходом (клік, Enter, пробіл)
+  /// з підказкою «Туди: at». Вигляд — «›» праворуч (обрав користувач 09.11, Мяунітор kolo-tudy): текстовий перехід —
+  /// клас clk-to, рядок — свій «›» у розмітці частини. el — селектор у колі, кілька через «|» — перший, що його видно;
+  /// tab — вкладка цілі; sec — розділ «Села» рядком переходів (st.guildGo: guests, toloka, trade, day, wagon, friends,
+  /// titles, rep, orders).
+  const toEsc = (x) => String(x).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+  function toAttr(w) {
+    if (!w) return '';
+    return (w.sec ? ' data-to-sec="' + toEsc(w.sec) + '"' : '')
+      + (w.el ? ' data-to="' + toEsc(w.el) + '"' : '')
+      + (w.tab ? ' data-to-tab="' + toEsc(w.tab) + '"' : '')
+      + (w.at ? ' title="Туди: ' + toEsc(w.at) + '"' : '')
+      + ' role="link" tabindex="0"';
+  }
+  /// Слова-перехід посеред підказки: «Порада: спершу <дочекайся купців ›>». html — уже екранований текст.
+  const toLink = (html, w) => '<span class="clk-to"' + toAttr(w) + '>' + html + '</span>';
+  /// Вкладка цілі відкрита гравцеві: на закриту (Клейма новачка) перехід не малюємо.
+  const toOpen = (st, tab) => !tab || (!!st.panes && !!st.panes[tab] && !isGated(st, tab));
+  /// Видно гравцеві: жодна обгортка (крім самої вкладки) не схована.
+  function shownEl(st, el) {
+    if (!el || !el.isConnected) return false;
+    for (let d = el; d && d !== st.el; d = d.parentElement) if (d.hidden && !d.classList.contains('clk-pane')) return false;
+    return true;
+  }
+  /// Перехід за ціллю { el, tab, sec }. false — туди зараз не дістатись (вкладка ще закрита гравцеві).
+  function goWhere(st, w) {
+    if (!w || !st.el) return false;
+    if (w.sec && st.guildGo) {
+      const tab = w.sec === 'orders' ? 'craft' : 'guild';
+      if (!st.panes[tab] || isGated(st, tab)) return false;
+      setTab(st, tab);
+      // Вкладку щойно відкрили — розділ міг ще не намалюватись: друга спроба за мить (як «Показати» в пораді Глека).
+      requestAnimationFrame(() => { if (!st.guildGo(w.sec)) setTimeout(() => st.guildGo(w.sec), 400); });
+      return true;
+    }
+    if (w.el) {
+      const sels = String(w.el).split('|');
+      // Порожня згортка (віх нема) — display: none без hidden: такої цілі теж «не видно», беремо наступну.
+      const find = sels.length < 2 ? sels[0] : (s) => {
+        for (const q of sels) {
+          const e = s.el.querySelector(q);
+          if (shownEl(s, e) && (e.getClientRects().length || e.closest('.clk-pane[hidden]'))) return e;
+        }
+        return null;
+      };
+      return goTo(st, find, w.tab);
+    }
+    if (w.tab && st.panes[w.tab] && !isGated(st, w.tab)) { H.api.sfx('tap'); setTab(st, w.tab); return true; }
+    return false;
+  }
+  /// Клік чи Enter/пробіл по вузлу з toAttr. Кнопка всередині переходу (забрати, побажання) — своя дія, не перехід.
+  /// Перехід з модального вікна спершу його закриває: ціль — під ним.
+  function toClick(st, e) {
+    const a = e.target.closest && e.target.closest('[data-to],[data-to-sec]');
+    if (!a || !st.el.contains(a)) return;
+    const own = e.target.closest('button, a[href], input, select, textarea, label, summary');
+    if (own && own !== a && a.contains(own)) return;
+    if (e.type === 'keydown') {
+      if ((e.key !== 'Enter' && e.key !== ' ') || e.target !== a) return;
+      e.preventDefault();
+    }
+    if (a.closest('.clk-overlay') && H.api.overlayOpen(st)) H.api.closeOverlay(st);
+    if (!goWhere(st, { el: a.dataset.to, tab: a.dataset.toTab, sec: a.dataset.toSec })) H.api.toast(st, 'Туди ще зарано — це місце відкриється згодом', 'warn');
   }
 
   /// Телефон (≤ 560 px): сцена така, щоб під нею над нижнім меню сайту вміщались смуга «Шлях виробу» й рядок «Далі»
@@ -5051,6 +5186,8 @@
       foldCss();
       st.el.addEventListener('click', (e) => foldClick(st, e));
       st.el.addEventListener('keydown', (e) => foldClick(st, e));
+      st.el.addEventListener('click', (e) => toClick(st, e));
+      st.el.addEventListener('keydown', (e) => toClick(st, e));
       st.boxWatch = keepBox(st);
       st.steady = steadyView(st);
       mountFly(st);

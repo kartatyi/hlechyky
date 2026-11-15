@@ -87,6 +87,8 @@
   const qHint = (api, q) => (q >= 4 ? 'розкішні — лише з розписаної партії' : '');
   /// Від якої краси розпису в партії трапляються розкішні (Clicker.PaintLux, каталог горна).
   const luxFrom = (st) => (st.catalog && st.catalog.kiln && st.catalog.kiln.paintLux) || 50;
+  // «Туди» (09.11): горно — звідки якість і вироби; Ремесло ще закрите — просто текст.
+  const toKiln = (st, api, html) => (api.toLink && api.toOpen(st, 'craft') ? api.toLink(html, { tab: 'craft', el: '[data-slot="kiln"]', at: 'Ремесло · горно' }) : html);
 
   /// Скільки з цієї штуки в коморі вільне (вид комори v12: kept = [толока, замовлення, майстерштук]) — корабель бере лише його.
   const freeOf = (it) => Math.max(0, it.n - (it.kept ? (it.kept[0] || 0) + (it.kept[1] || 0) + (it.kept[2] || 0) : 0));
@@ -217,7 +219,7 @@
         + ' title="Корабель відпливе з тим, що вже на борту (за нього заплачено), а новий прийде за ' + GAP_MIN + ' хв">'
         + (armed ? '⚓ Точно відпустити?' : '⚓ Відпустити корабель') + '</button>';
     const btns = tolokaBtn(st, api, s) + (s.ware ? formBtn(st, api, s) : '') + paintBtn(st, api, s) + rel;
-    return '<div class="clkt-why small">' + esc(lack(st, api, s)) + (hint ? ' · ' + esc(hint) : '') + '</div>'
+    return '<div class="clkt-why small">' + esc(lack(st, api, s)) + (hint ? ' · ' + toKiln(st, api, esc(hint)) : '') + '</div>'
       + (btns ? '<div class="clkt-btns">' + btns + '</div>' : '');
   }
 
