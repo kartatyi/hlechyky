@@ -59,9 +59,9 @@
     <button data-route="stats" title="Хто скільки закидає, грає й тусить — клавіша 4"><span class="ico">📊</span><span class="lbl">Хто скільки</span></button>
   </nav>
   <span id="hdrTitle" class="hdrtitle">Ефір</span>
+  <!-- Блок музики — одна капсула (10.11): обкладинку, назву, смужку треку з часом і ❤/⏭ малює paintNowInto(); ▶ і
+       гучність живуть тут постійно. #nowMini — display: contents, тому порядок усього рядка задає order у style.css -->
   <div class="mini" id="mini">
-    <!-- обкладинку, назву й кнопки ❤/⏭ малює paintNowInto(); ▶, гучність і 🎧 живуть тут постійно.
-         #nowMini — display: contents, тому порядок усього рядка задає order у style.css -->
     <div id="nowMini"></div>
     <button id="playBtn" class="primary" title="Врубити ефір — слухати прямо тут" aria-label="Врубити ефір — слухати прямо тут">▶</button>
     <!-- На широкому екрані повзунок стоїть у рядку, на вужчому ховається за 🔊 і випадає під кнопкою. -->
@@ -69,11 +69,10 @@
       <button id="volBtn" class="icon ghost" type="button" title="Гучність" aria-label="Гучність" aria-expanded="false">🔊</button>
       <input id="volume" type="range" min="0" max="100" step="1" value="90" title="Гучність" aria-label="Гучність">
     </div>
-    <span id="listeners" class="chip" title="Скільки людей слухає потік">🎧 0</span>
   </div>
+  <span id="listeners" class="chip" title="Скільки людей слухає потік">🎧 0</span>
   <div class="who">
     <span id="liqStatus" class="chip ok" title="Стан ефіру" hidden>ефір</span>
-    <button id="padTip" class="icon padtip" type="button" title="Як грати джойстиком" aria-label="Як грати джойстиком" hidden>🎮</button>
     <!-- Усе своє — одним чипом: хто я і скільки черепків. Клік веде на сторінку «Я». -->
     <a id="meBtn" class="mechip" href="#who" title="Твій профіль: черепки, ачівки, акаунт">
       <span id="meAva" class="ava" aria-hidden="true"></span>
@@ -82,6 +81,9 @@
     </a>
     <!-- 🎁 безкоштовні прокрути в слотах (Slots:Free): видно, поки є невикручені; дотик — в автомат одразу в режимі «безкоштовно» -->
     <button id="hdrFree" class="hdrfree" type="button" hidden>🎁 <b>0</b></button>
+    <!-- Лоток значків — одна рамка, як у розділів і капсули музики; кнопки в ньому однакові 32×32. -->
+    <div class="tools">
+    <button id="padTip" class="icon padtip" type="button" title="Як грати джойстиком" aria-label="Як грати джойстиком" hidden>🎮</button>
     <!-- ⏭ у шапці — лише на телефоні за столом і в балачках, де міні-плеєр унизу сховано (style.css, renderNow). -->
     <button id="hdrSkip" class="icon hdrskip" type="button" title="Перемкнути на наступний трек" aria-label="Скіп — наступний трек" hidden>⏭</button>
     <!-- 🚨 Тривога (web/tryvoga.js): мапа тривог і цілей; під час тривоги в моєму районі — крапка кольором рівня. -->
@@ -91,8 +93,8 @@
     <!-- «💡 Розробнику»: пропозиції й баги. Бейдж — скільки записок чекає (адміну) або в скількох своїх записках нова відповідь розробника (решті). -->
     <button id="fbBtn" class="icon fbbtn" type="button" title="Пропозиції й баги — розробнику. За баг чи зроблену ідею — 5000 черепків від Дядька Глека" aria-label="Написати розробнику">💡<span id="fbBadge" class="chip badge" hidden>0</span></button>
     <button id="chatToggle" class="icon chat-toggle" title="Балачки — клавіша ]" aria-label="Показати чи сховати балачки">💬<span id="hdrChatBadge" class="chip badge" hidden>0</span></button>
+    </div>
   </div>
-  <div class="hdrprog" id="hdrProg" title="Скільки лишилось треку"><div id="hdrBar"></div></div>
 </header>
 <noscript><p class="noscript">Глечики — спільне онлайн-радіо, де музику ставлять самі слухачі, а поруч чат та ігри на компанію: Мафія, Своя гра, Вгадай мелодію й інші. Щоб слухати й грати, увімкни JavaScript.</p></noscript>
 <!-- Нічний відбій: бачать лише ті, кого він стосується (app.js, paintNight) -->

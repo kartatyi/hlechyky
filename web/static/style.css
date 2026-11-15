@@ -86,38 +86,101 @@ input:focus { border-color: var(--accent2); }
 .fade { animation: fadein .25s ease-out; }
 @keyframes fadein { from { opacity: 0; transform: translateY(4px);} to { opacity: 1; transform: none; } }
 
-/* ---- header ---- */
+/* ---- header ----
+   Одна система (10.11, владік: «всюди різні заокруглення, відступи, розміри»). Усе в шапці — 40 px заввишки (--hc).
+   Групи — «лотки» з однією рамкою й радіусом (--hr): розділи, капсула музики, значки праворуч. Кнопки в лотку — 32 px,
+   прозорі, з вкладеним радіусом (--hri = --hr − рамка 1 − відступ 3), тож кути лягають рівно. Окремі чипи (🎧, «я», 🎁,
+   стан ефіру) — ті самі 40 px і --hr. Між групами — 10 px, у лотку між кнопками — 2 px. */
 header {
-  display: flex; align-items: center; gap: 12px; padding: 8px 16px; min-height: 56px;
+  --hc: 40px; --hr: 12px; --hri: calc(var(--hr) - 4px);
+  display: flex; align-items: center; gap: 10px; padding: 7px 16px 8px; min-height: 56px; /* 7 + 40 + 8 + рамка 1 = 56 */
   border-bottom: 1px solid var(--line); background: rgba(15, 31, 24, .88); backdrop-filter: blur(8px);
   position: sticky; top: 0; z-index: 5;
 }
 header .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 1.15em; letter-spacing: .3px; flex: none; }
 header .brand img { width: 30px; height: 30px; }
+/* лоток */
+header .vswitch, header .mini, header .tools {
+  display: flex; align-items: center; gap: 2px; flex: none; height: var(--hc); box-sizing: border-box; padding: 3px;
+  background: var(--bg2); border: 1px solid var(--line); border-radius: var(--hr);
+}
+/* кнопка в лотку */
+header .vswitch button, header .mini button, header .tools > button {
+  height: 32px; min-width: 32px; padding: 0 10px; border: 0; border-radius: var(--hri); background: transparent; color: var(--muted);
+  justify-content: center;
+}
+header .vswitch button:hover, header .mini button:hover, header .tools > button:hover { background: var(--panel2); color: var(--text); }
+header .vswitch button:active, header .mini button:active, header .tools > button:active { transform: none; }
+/* окремий чип */
+header #listeners, header .mechip, header .hdrfree, header #liqStatus {
+  flex: none; height: var(--hc); box-sizing: border-box; border-radius: var(--hr); border: 1px solid var(--line); background: var(--bg2);
+}
 
-/* ---- міні-плеєр у шапці ----
-   #nowMini — display: contents, тому обкладинка, назва і ❤/⏭ стають прямими дітьми .mini
-   поряд із ▶, гучністю і 🎧, і весь рядок шикується одним order. Так перемальовування
-   треку не чіпає ні кнопку ▶ (у ній стан playState), ні повзунок гучності. */
-header .mini { display: flex; align-items: center; gap: 8px; flex: 1 1 auto; min-width: 0; }
+/* ---- розділи ---- */
+header .vswitch button { padding: 0 11px; }
+header .vswitch button.on { background: var(--panel2); color: var(--text); }
+header .vswitch .ico { font-size: 1.05em; line-height: 1; }
+header .vswitch .count { color: var(--accent); font-weight: 700; font-size: .85em; }
+/* Хід у покроковій грі, поки ти деінде: «Ігри» в шапці тихенько світяться. */
+header .vswitch button.turn { color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent2); }
+@media (prefers-reduced-motion: no-preference) { header .vswitch button.turn { animation: turnGlow 1.6s ease-in-out infinite; } }
+@keyframes turnGlow { 50% { box-shadow: inset 0 0 0 1px var(--accent2), 0 0 12px rgba(244, 197, 66, .35); } }
+header .hdrtitle { display: none; font-weight: 700; font-size: 1.05em; }
+
+/* ---- блок музики: капсула (10.11, раунд hdr-music «Б») ----
+   #nowMini — display: contents, тому обкладинка, назва зі смужкою і ❤/⏭ стають прямими дітьми .mini поряд із ▶ і
+   гучністю, і весь рядок шикується одним order. Так перемальовування треку не чіпає ні кнопку ▶ (у ній стан playState),
+   ні повзунок гучності. Капсула росте до 560 px; 🎧 «хто слухає» — окремим чипом поруч. */
+header .mini { flex: 0 1 560px; min-width: 0; }
 header #nowMini { display: contents; }
-.mini-cv { order: 1; flex: none; width: 32px; height: 32px; border-radius: 6px; overflow: hidden; display: block; background: var(--bg2); }
-.mini-cv img, .mini-cv .noimg { width: 32px; height: 32px; object-fit: cover; display: block; }
-.mini-tt { order: 2; flex: 1 1 90px; min-width: 0; line-height: 1.15; color: var(--text); text-decoration: none; }
+.mini-cv { order: 1; flex: none; width: 32px; height: 32px; border-radius: var(--hri); overflow: hidden; display: block; background: var(--panel2); }
+.mini-cv img, .mini-cv .noimg { width: 100%; height: 100%; object-fit: cover; display: block; }
+.mini-tt { order: 2; flex: 1 1 120px; min-width: 0; margin: 0 8px; line-height: 1.15; color: var(--text); text-decoration: none; }
 .mini-tt b, .mini-tt small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mini-tt b { font-weight: 600; font-size: .92em; }
-.mini-tt small { color: var(--muted); font-size: .78em; }
+.mini-tt b { font-weight: 600; font-size: .86em; }
+.mini-tt small { color: var(--muted); font-size: .76em; }
+.mini-tt .mini-ar { color: var(--muted); font-weight: 400; }
 .mini-tt:hover b { color: var(--accent); }
-.mini-acts { order: 4; flex: none; display: flex; gap: 4px; }
-.mini-acts button { padding: 5px 9px; font-size: .9em; }
+/* час і смужка треку під назвою — видно, скільки лишилось, із будь-якого розділу */
+.mini-pr { display: flex; align-items: center; gap: 6px; margin-top: 4px; font-size: .66em; line-height: 1; color: var(--muted); font-variant-numeric: tabular-nums; }
+.mini-pr > span:not(.hdrprog) { flex: none; }
+/* Без transition (09.11): безперервний перехід ширини тримав перемальовування шапки на кожному кадрі монітора —
+   ширину кроком «по пікселю» ставить app.js (paintBars). */
+.hdrprog { flex: 1; min-width: 0; height: 3px; border-radius: 999px; overflow: hidden; background: var(--panel3); }
+.hdrprog > i { display: block; height: 100%; width: 0; background: var(--accent); }
+.hdrprog.pending { background: repeating-linear-gradient(90deg, var(--accent2) 0 8px, #8a6a15 8px 16px); animation: stripes .6s linear infinite; }
+.hdrprog.pending > i { background: transparent; }
+header .mini button { gap: 5px; font-size: .86em; }
+header .mini button svg { display: block; flex: none; }
+.mini-acts { order: 4; flex: none; display: flex; gap: 2px; }
+.mini-acts button.active { background: transparent; color: var(--accent); }
+.mini-acts button.active svg path { fill: currentColor; }
 /* На «Ефірі» ❤ і ⏭ стоять просто під шапкою, у великій панелі — удруге в шапці вони лише шум. */
 body.route-efir header .mini-acts { display: none; }
-header #playBtn { order: 3; flex: none; }
-/* Гучність: на широкому — повзунок у рядку (🔊 лише як значок), на вужчому — ховається за 🔊 і випадає під ним. */
-header .volwrap { order: 5; flex: none; position: relative; display: flex; align-items: center; gap: 2px; }
-header #volume { width: 110px; accent-color: var(--accent); }
-header #volBtn { padding: 5px 6px; font-size: .95em; pointer-events: none; }
-header #listeners { order: 6; flex: none; }
+/* Лише значок (записка #56): ▶ — врубити, у ефірі — блимаюча крапка й квадратик «стоп». Ширина та сама в усіх станах. */
+header #playBtn { order: 3; flex: none; width: 32px; padding: 0; background: var(--accent); color: var(--accent-ink); }
+header #playBtn:hover { background: #ffd35a; }
+#playBtn { justify-content: center; }
+#playBtn.live { background: var(--panel3); color: var(--text); box-shadow: inset 0 0 0 1px var(--accent2); gap: 3px; }
+header #playBtn.live:hover { background: var(--panel2); }
+#playBtn.live .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--danger); animation: blink 1.4s infinite; }
+#playBtn.live .stop { width: 9px; height: 9px; border-radius: 2px; background: currentColor; }
+@keyframes blink { 50% { opacity: .25; } }
+/* Гучність: тонкий повзунок, щоб не сперечався з ▶; на вужчому — ховається за значком і випадає під ним. */
+header .volwrap { order: 5; flex: none; position: relative; display: flex; align-items: center; }
+header #volBtn { pointer-events: none; padding: 0 6px; }
+header #volume { -webkit-appearance: none; appearance: none; width: 84px; height: 16px; margin: 0 8px 0 2px; background: transparent; cursor: pointer; }
+header #volume::-webkit-slider-runnable-track { height: 4px; border-radius: 999px; background: linear-gradient(var(--muted), var(--muted)) 0 / var(--v, 90%) 100% no-repeat, var(--panel3); }
+header #volume:hover::-webkit-slider-runnable-track { background: linear-gradient(var(--accent), var(--accent)) 0 / var(--v, 90%) 100% no-repeat, var(--panel3); }
+header #volume::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 12px; height: 12px; margin-top: -4px; border: 0; border-radius: 50%; background: var(--text); }
+header #volume::-moz-range-track { height: 4px; border-radius: 999px; background: var(--panel3); }
+header #volume::-moz-range-progress { height: 4px; border-radius: 999px; background: var(--muted); }
+header #volume::-moz-range-thumb { width: 12px; height: 12px; border: 0; border-radius: 50%; background: var(--text); }
+/* 🎧 хто слухає — окремий чип поруч із капсулою */
+header #listeners { padding: 0 12px; font-size: .8em; }
+header #listeners .ls-who, header #listeners .ls-more { box-shadow: 0 0 0 2px var(--bg2); }
+header #listeners .ava.ls { width: 28px; height: 28px; }
+header #listeners .ls-more { min-width: 28px; height: 28px; border-radius: 14px; }
 
 /* ---- «я» в шапці: аватарка, нік і черепки одним чипом ---- */
 .ava {
@@ -129,78 +192,56 @@ header #listeners { order: 6; flex: none; }
 .ava.xl { width: 44px; height: 44px; font-size: 1.15em; }
 .ava.xxl { width: 72px; height: 72px; font-size: 1.9em; }
 .ava.none { background: var(--panel3); color: var(--muted); box-shadow: none; }
-header .mechip {
-  display: inline-flex; align-items: center; gap: 7px; padding: 3px 10px 3px 3px; border-radius: 999px;
-  background: var(--panel2); color: var(--text); text-decoration: none; max-width: 260px; border: 1px solid transparent;
-}
-header .mechip:hover { background: var(--panel3); }
+header .mechip { display: inline-flex; align-items: center; gap: 8px; padding: 0 12px 0 3px; color: var(--text); text-decoration: none; max-width: 260px; }
+header .mechip .ava { width: 32px; height: 32px; }
+header .mechip:hover { background: var(--panel2); }
 header .mechip.on { border-color: var(--accent2); }
 header .mechip .nick { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 header .mechip.guest .nick { color: var(--muted); }
 header .mechip.admin .nick::after { content: " · адмін"; color: var(--accent); }
 header .mechip .wallet { color: var(--accent); font-size: .9em; white-space: nowrap; font-variant-numeric: tabular-nums; }
 /* 🎁 безкоштовні прокрути — зелений значок поруч із профілем */
-header .hdrfree { display: inline-flex; align-items: center; gap: 3px; padding: 3px 9px; border-radius: 999px; font: inherit; font-size: .9em;
+header .hdrfree { display: inline-flex; align-items: center; gap: 3px; padding: 0 12px; font: inherit; font-size: .9em;
   cursor: pointer; white-space: nowrap; font-variant-numeric: tabular-nums; color: #bff0c9; background: rgba(79, 179, 106, .16);
-  border: 1px solid rgba(79, 179, 106, .55); }
+  border-color: rgba(79, 179, 106, .55); }
 header .hdrfree:hover { background: rgba(79, 179, 106, .28); }
 header .hdrfree[hidden] { display: none; }
-/* Хід у покроковій грі, поки ти деінде: «Ігри» в шапці тихенько світяться. */
-header .vswitch button.turn { color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent2); }
-@media (prefers-reduced-motion: no-preference) { header .vswitch button.turn { animation: turnGlow 1.6s ease-in-out infinite; } }
-@keyframes turnGlow { 50% { box-shadow: inset 0 0 0 1px var(--accent2), 0 0 12px rgba(244, 197, 66, .35); } }
+header #liqStatus { padding: 0 12px; }
 
-/* тонка смужка прогресу треку по всій ширині — видно, скільки лишилось, із будь-якого розділу.
-   Без transition (09.11): безперервний перехід ширини тримав перемальовування шапки на кожному кадрі монітора —
-   ширину кроком «по пікселю» ставить app.js (paintBars). */
-.hdrprog { position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; background: var(--bg2); }
-.hdrprog > div { height: 100%; width: 0; background: var(--accent); }
-.hdrprog.pending { background: repeating-linear-gradient(90deg, var(--accent2) 0 8px, #8a6a15 8px 16px); animation: stripes .6s linear infinite; }
-.hdrprog.pending > div { background: transparent; }
-header .vswitch { display: flex; gap: 2px; background: var(--bg2); border-radius: 11px; padding: 2px; flex: none; }
-header .vswitch button { background: transparent; border-color: transparent; color: var(--muted); padding: 6px 11px; border-radius: 9px; }
-header .vswitch button:hover { background: var(--panel2); color: var(--text); }
-header .vswitch button.on { background: var(--panel2); color: var(--text); }
-header .vswitch .ico { font-size: 1.05em; line-height: 1; }
-header .vswitch .count { color: var(--accent); font-weight: 700; font-size: .85em; }
-header .hdrtitle { display: none; font-weight: 700; font-size: 1.05em; }
-header .who { display: flex; align-items: center; gap: 8px; flex: none; min-width: 0; }
+/* ---- праворуч: «я» і лоток значків ---- */
+header .who { display: flex; align-items: center; gap: 10px; flex: none; min-width: 0; margin-left: auto; }
+header .tools > button { width: 32px; padding: 0; font-size: 1.05em; position: relative; }
+header .tools .badge { position: absolute; top: -5px; right: -5px; }
+header .tools .padtip { box-shadow: inset 0 0 0 1px var(--accent); }
 /* Кнопка балачок: бейдж непрочитаного сидить у ній же, тож ширина не стрибає на порожньому бейджі. */
-header .chat-toggle { position: relative; font-size: 1.05em; padding: 6px 9px; }
-body:not(.chat-collapsed) header .chat-toggle { background: var(--panel3); }
-header .chat-toggle .badge { position: absolute; top: -4px; right: -4px; }
-/* Лише значок (записка #56): ▶ — врубити, у ефірі — блимаюча крапка й квадратик «стоп». Ширина та сама в усіх станах. */
-#playBtn { min-width: 44px; justify-content: center; }
-#playBtn.live { background: var(--panel2); color: var(--text); border-color: var(--accent2); gap: 5px; }
-#playBtn.live .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--danger); animation: blink 1.4s infinite; }
-#playBtn.live .stop { width: 9px; height: 9px; border-radius: 2px; background: currentColor; }
-@keyframes blink { 50% { opacity: .25; } }
+header .chat-toggle { position: relative; }
+body:not(.chat-collapsed) header .chat-toggle { background: var(--panel3); color: var(--text); }
 
-/* Шапка на середніх ширинах не має лізти у два рядки. Ховаємо по черзі: спершу повзунок гучності (за 🔊),
+/* Шапка на середніх ширинах не має лізти у два рядки. Ховаємо по черзі: спершу повзунок гучності (за значком),
    далі підписи розділів (лишаються іконки з title), далі назву сайту, виконавця в міні-плеєрі й нік.
    На «Ефірі» трек і так видно у великій панелі, тож там обкладинка й назва в шапці ховаються, а підписи
    розділів лишаються до 1000 px — раніше на планшеті 1024 px від них лишались самі значки. */
 @media (min-width: 901px) {
   body.route-efir header .mini-cv, body.route-efir header .mini-tt { display: none; }
+  body.route-efir header .mini { flex: none; }
 }
 @media (max-width: 1440px) {
   header #volBtn { pointer-events: auto; }
   header #volume {
-    display: none; position: absolute; top: calc(100% + 8px); right: -8px; width: 160px; padding: 12px 10px;
-    background: var(--panel); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 10px 30px rgba(0, 0, 0, .45); z-index: 8;
+    display: none; position: absolute; top: calc(100% + 10px); right: -8px; width: 160px; margin: 0; padding: 12px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: var(--hr); box-shadow: 0 10px 30px rgba(0, 0, 0, .45); z-index: 8;
   }
   header .volwrap.open #volume { display: block; }
-  header .volwrap.open #volBtn { background: var(--panel2); }
+  header .volwrap.open #volBtn { background: var(--panel2); color: var(--text); }
 }
 @media (max-width: 1300px) {
   body:not(.route-efir) header .vswitch .lbl { display: none; }
-  body:not(.route-efir) header .vswitch button { padding: 6px 10px; font-size: 1.05em; }
+  body:not(.route-efir) header .vswitch button { padding: 0 10px; font-size: 1.05em; }
 }
 @media (max-width: 1200px) {
   header .brand span { display: none; }
 }
 @media (max-width: 1150px) {
-  header { gap: 10px; }
   header .mechip .nick { max-width: 90px; }
   /* На «Ефірі» тут стоять ще й підписи розділів: 🎧 з лічильником поступається їм місцем — хто слухає,
      видно в балачках (🎧 біля ніків). Інакше разом із чипом «ефір ↓» шапка наповзала сама на себе. */
@@ -208,7 +249,7 @@ header .chat-toggle .badge { position: absolute; top: -4px; right: -4px; }
 }
 @media (max-width: 1000px) {
   header .vswitch .lbl { display: none; }
-  header .vswitch button { padding: 6px 10px; font-size: 1.05em; }
+  header .vswitch button { padding: 0 10px; font-size: 1.05em; }
   .mini-tt small { display: none; }
   header #listeners { max-width: 150px; }
 }
@@ -845,19 +886,25 @@ body.clk-big:not(.gfull) main { max-width: calc(1600px * var(--clk-z, 1)); }
   .updbar .nb-moon { display: none; }
   /* --tabs-h уже з домашньою смужкою айфона: 58 px лишаються під кнопки, а все, що стоїть над вкладками, піднімається само. */
   :root { --sab: env(safe-area-inset-bottom, 0px); --tabs-h: calc(58px + var(--sab)); --mini-h: 54px; }
-  header { gap: 8px; padding: 8px 12px; backdrop-filter: none; background: #101f18; }
+  header { gap: 8px; padding: 7px 12px 8px; backdrop-filter: none; background: #101f18; }
   /* Лежачи на айфоні з «чубчиком» і в PWA на весь екран — не заходимо під виріз. */
-  header { padding-top: max(8px, env(safe-area-inset-top)); padding-left: max(12px, env(safe-area-inset-left)); padding-right: max(12px, env(safe-area-inset-right)); }
+  header { padding-top: max(7px, env(safe-area-inset-top)); padding-left: max(12px, env(safe-area-inset-left)); padding-right: max(12px, env(safe-area-inset-right)); }
   header .brand span, header #volume { display: none; }
   header .hdrtitle { display: block; }
   /* Міні-плеєр переїздить униз, над вкладки: він потрібен на кожному екрані, а в шапці місця нема.
      Це та сама розмітка й ті самі обробники — інша лише позиція. Фіксована позиція працює саме
      тому, що backdrop-filter із шапки тут знято: інакше він робив би шапку контейнером. */
   header .mini {
-    position: fixed; left: 0; right: 0; bottom: var(--tabs-h); z-index: 6; height: var(--mini-h);
-    gap: 8px; padding: 0 12px; background: #0b1712; border-top: 1px solid var(--line);
+    position: fixed; left: 0; right: 0; bottom: var(--tabs-h); z-index: 6; height: var(--mini-h); flex: none;
+    gap: 8px; padding: 0 12px; background: #0b1712; border-width: 1px 0 0; border-radius: 0;
   }
-  header #playBtn { padding: 7px 11px; }
+  header .mini-cv { width: 40px; height: 40px; }
+  .mini-tt b { font-size: .95em; }
+  .mini-pr { font-size: .74em; margin-top: 6px; }
+  .hdrprog { height: 4px; }
+  header #playBtn { width: 44px; height: 44px; border-radius: var(--hr); }
+  header .mini .mini-acts button { width: 40px; height: 40px; padding: 0; color: var(--text); }
+  header .mini button svg { width: 18px; height: 18px; }
   /* Унизу лишаємо найпотрібніше: обкладинка, назва з виконавцем, ▶ і ⏭.
      Лайк і лічильник слухачів є на панелі «В ефірі», а тут вони з'їдали б назву. */
   header #listeners, .mini-acts [data-act="like"] { display: none; }
@@ -872,7 +919,8 @@ body.clk-big:not(.gfull) main { max-width: calc(1600px * var(--clk-z, 1)); }
   body.gfull header .hdrskip, body.g-room header .hdrskip, body.route-chat header .hdrskip { display: inline-flex; }
   /* «Я» в шапці на телефоні — аватарка й черепки, без ніка: нік і так видно в профілі. */
   header .mechip .nick { display: none; }
-  header .mechip { padding-right: 8px; }
+  header .mechip { padding-right: 10px; }
+  header .mechip.guest { padding-right: 3px; } /* у гостя лише кружечок «?» — чип квадратний */
   /* На телефоні балачки — окрема вкладка внизу, тож рейка тут не потрібна взагалі. */
   main { grid-template-columns: 1fr; padding: 12px; padding-bottom: calc(var(--tabs-h) + var(--mini-h) + 12px); gap: 12px; --rail: 0px; --rail-gap: 0px; }
   main { padding-left: max(12px, env(safe-area-inset-left)); padding-right: max(12px, env(safe-area-inset-right)); }
@@ -1361,9 +1409,9 @@ body.preview header .mechip .wallet { display: none; }
 .gt-nick .who-n { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ---- «💡 Розробнику»: кнопка в шапці, вікно записки, «Мої записки» ---- */
-header .fbbtn { position: relative; padding: 6px 9px; font-size: 1.05em; }
+header .fbbtn { position: relative; }
 header .fbbtn .badge { position: absolute; top: -4px; right: -4px; }
-header .hdrskip { display: none; padding: 6px 9px; font-size: 1.05em; }
+header .hdrskip { display: none; }
 /* dvh — висота того, що видно: на телефоні 92vh вищі за екран під рядком адреси. */
 .modal .card.fbcard { width: min(94vw, 520px); max-height: 92vh; max-height: 92dvh; overflow: auto; }
 .fbcard .fbpay { margin: 0 0 8px; padding: 6px 10px; border-radius: 8px; background: rgba(244, 197, 66, .1); border: 1px solid rgba(244, 197, 66, .35); }

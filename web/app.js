@@ -451,6 +451,19 @@
   }
 
   // ---------- player ----------
+  /// Значки капсули музики в шапці (10.11): один набір, однакова вага, колір — currentColor. Емодзі ▶/⏭/🔊 були різного
+  /// розміру й кольору, і кнопки через них виходили різної ширини.
+  const svg16 = (w, body) => `<svg viewBox="0 0 16 16" width="${w}" height="${w}" aria-hidden="true">${body}</svg>`;
+  const SPK = '<path d="M2.4 6.1v3.8h2.5L8.3 13V3L4.9 6.1z" fill="currentColor"/>';
+  const WAVE1 = '<path d="M10.6 5.6a3.4 3.4 0 0 1 0 4.8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>';
+  const ICON = {
+    play: svg16(14, '<path d="M4.6 2.9v10.2a.6.6 0 0 0 .9.5l8-5.1a.6.6 0 0 0 0-1l-8-5.1a.6.6 0 0 0-.9.5z" fill="currentColor"/>'),
+    skip: svg16(15, '<path d="M3 3.3v9.4a.5.5 0 0 0 .8.4l6.4-4.7a.5.5 0 0 0 0-.8L3.8 2.9a.5.5 0 0 0-.8.4z" fill="currentColor"/><rect x="11.4" y="3" width="1.9" height="10" rx=".95" fill="currentColor"/>'),
+    heart: svg16(15, '<path d="M8 13.4S2.3 10.1 2.3 6.1A2.9 2.9 0 0 1 8 4.7a2.9 2.9 0 0 1 5.7 1.4c0 4-5.7 7.3-5.7 7.3z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>'),
+    vol: svg16(16, SPK + WAVE1 + '<path d="M12.4 3.8a6 6 0 0 1 0 8.4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>'),
+    volLow: svg16(16, SPK + WAVE1),
+    mute: svg16(16, SPK + '<path d="M10.8 6.2l3.6 3.6M14.4 6.2l-3.6 3.6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>'),
+  };
   const audio = $('audio');
   const vol = $('volume');
   // повзунок 0..100 іде по децибелах, а не лінійно: крок = 0.5 дБ, 1 → −50 дБ, 100 → 0 дБ.
@@ -469,6 +482,7 @@
   function setVolPos(p, save) {
     p = Math.min(100, Math.max(0, p));
     vol.value = p;
+    vol.style.setProperty('--v', p + '%'); // заливка тонкого повзунка в капсулі (style.css, header #volume)
     const v = posToVol(p);
     audio.volume = v * duckBy * duckAnthem * duckGame;
     // гімн іде тією ж гучністю, що й радіо: крутнули повзунок — і він за ним
@@ -496,7 +510,7 @@
   $('volBtn').onclick = (e) => { e.stopPropagation(); setVolOpen(!volWrap.classList.contains('open')); };
   document.addEventListener('click', (e) => { if (volWrap.classList.contains('open') && !e.target.closest('#volWrap')) setVolOpen(false); });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setVolOpen(false); });
-  const paintVolIcon = () => { const p = +vol.value; $('volBtn').textContent = p === 0 ? '🔇' : p < 45 ? '🔉' : '🔊'; };
+  const paintVolIcon = () => { const p = +vol.value; $('volBtn').innerHTML = p === 0 ? ICON.mute : p < 45 ? ICON.volLow : ICON.vol; };
   vol.addEventListener('input', paintVolIcon);
   vol.addEventListener('wheel', paintVolIcon);
   paintVolIcon();
@@ -505,7 +519,7 @@
   function setPlayUi() {
     const b = $('playBtn');
     const set = (cls, html, tip) => { b.className = cls; b.innerHTML = html; b.title = tip; b.setAttribute('aria-label', tip); };
-    if (playState === 'idle') set('primary', '▶', 'Врубити ефір — слухати прямо тут');
+    if (playState === 'idle') set('primary', ICON.play, 'Врубити ефір — слухати прямо тут');
     else if (playState === 'connecting') set('primary busy', '<span class="spin"></span>', 'Врубаю…');
     else set('live', '<span class="dot"></span><span class="stop"></span>', 'В ефірі — вирубити звук');
   }
@@ -708,11 +722,15 @@
     const t = n.track || {};
     const liked = n.likers.some((x) => sameNick(x, me.nick));
     const pending = n.skipPending;
-    const like = `<button data-act="like" class="${liked ? 'active' : ''}" title="${esc(n.likers.join(', ') || 'Вподобати')}">❤ ${n.likers.length}</button>`;
-    const skip = `<button data-act="skip" ${pending ? 'disabled' : ''} title="Перемкнути на наступний трек">⏭${mini ? '' : '<span class="lbl"> Скіп</span>'}</button>`;
+    const like = `<button data-act="like" class="${liked ? 'active' : ''}" title="${esc(n.likers.join(', ') || 'Вподобати')}">${mini ? `${ICON.heart}<span>${n.likers.length}</span>` : `❤ ${n.likers.length}`}</button>`;
+    const skip = `<button data-act="skip" ${pending ? 'disabled' : ''} title="Перемкнути на наступний трек">${mini ? ICON.skip : '⏭<span class="lbl"> Скіп</span>'}</button>`;
     if (mini) {
+      // Капсула (10.11, раунд hdr-music «Б»): назва · виконавець, під ними — час і смужка треку. Смужка тут, а не через усю
+      // шапку; ширину й час ставлять paintBars і tick (#hdrBar, #hdrEl), тож одразу після перемальовки вона вже на місці.
+      const pos = trackPos();
       box.innerHTML = `<a class="mini-cv" href="#efir" title="Перейти в Ефір">${cover(t)}</a>
-        <a class="mini-tt" href="#efir" title="${esc(`${t.title} — ${t.artist}`)}"><b>${esc(t.title)}</b><small>${esc(t.artist)}</small></a>
+        <a class="mini-tt" href="#efir" title="${esc(`${t.title} — ${t.artist}`)}"><b>${esc(t.title)}<span class="mini-ar"> · ${esc(t.artist)}</span></b>
+          <span class="mini-pr"><span id="hdrEl">${fmt(pos.elapsed)}</span><span class="hdrprog${pending ? ' pending' : ''}" id="hdrProg"><i id="hdrBar" style="width:${pos.pct.toFixed(2)}%"></i></span><span>${fmt(n.durationSec)}</span></span></a>
         <span class="mini-acts">${like}${skip}</span>`;
       wireNow(box, t, o);
       return;
@@ -789,25 +807,26 @@
     return { d, elapsed, pct };
   }
 
-  /// Смужки треку — під шапкою (#hdrBar: скільки лишилось, видно з будь-якого розділу) і на «Ефірі» (#bar) — без
-  /// CSS-переходу (09.11). Був `transition: width 1s linear` під щосекундну нову ширину: смужка рухалась безперервно,
-  /// і Chrome на кожному кадрі монітора (180 Гц у владіка) перекладав і перемальовував шапку — на будь-якій сторінці,
-  /// поки в ефірі трек. GPU-процес у Chrome один на всі вікна, тож YouTube на іншому моніторі губив кадри (заміри,
-  /// RTX 5060 Ti, 2560×1440: GPU 113–194 мс/с і 128–180 кадрів/с — проти 6 і 2 без переходу). Тепер ширину ставимо
-  /// самі й лише тоді, коли смужка шапки зрушить на піксель: трек 3,5 хв на 2560 px — це 82 мс, тож 10 разів на
-  /// секунду (частіше не буває), а короткій смужці на телефоні — рідше, аж до разу на секунду (тоді й tick кличе).
+  /// Смужки треку — у капсулі музики в шапці (#hdrBar, видно з будь-якого розділу; до 10.11 тяглась через усю шапку)
+  /// і на «Ефірі» (#bar) — без CSS-переходу (09.11). Був `transition: width 1s linear` під щосекундну нову ширину:
+  /// смужка рухалась безперервно, і Chrome на кожному кадрі монітора (180 Гц у владіка) перекладав і перемальовував
+  /// шапку — на будь-якій сторінці, поки в ефірі трек. GPU-процес у Chrome один на всі вікна, тож YouTube на іншому
+  /// моніторі губив кадри (заміри, RTX 5060 Ti, 2560×1440: GPU 113–194 мс/с і 128–180 кадрів/с — проти 6 і 2 без
+  /// переходу). Тепер ширину ставимо самі й лише тоді, коли довша з видимих смужок зрушить на піксель: не частіше
+  /// 10 разів на секунду, а коротка смужка капсули (~250 px на 3,5 хв) — раз на секунду (тоді й tick кличе).
   let barTimer = 0;
   function paintBars() {
     clearTimeout(barTimer);
     barTimer = 0;
     const { d, pct } = trackPos();
     const w = d ? pct.toFixed(2) + '%' : '0%';
-    $('hdrBar').style.width = w;
+    const hb = $('hdrBar'); // нема, коли тиша
+    if (hb) hb.style.width = w;
     const bar = $('bar');
     if (bar) bar.style.width = w;
     // Схована вкладка — нема кому дивитись; повернешся — підхопить найближчий tick.
     if (!d || pct >= 100 || document.hidden) return;
-    const px = $('hdrProg').clientWidth || 1000;
+    const px = Math.max(hb ? hb.parentElement.clientWidth : 0, bar ? bar.parentElement.clientWidth : 0) || 1000;
     barTimer = setTimeout(paintBars, Math.max(100, Math.min(1000, (d * 1000) / px)));
   }
 
@@ -817,8 +836,9 @@
     const { elapsed } = trackPos();
     const el = $('tElapsed');
     if (el) el.textContent = fmt(elapsed);
+    const he = $('hdrEl'); // час у капсулі: раз на секунду й лише коли змінився
+    if (he) { const s = fmt(elapsed); if (he.textContent !== s) he.textContent = s; }
     paintBars();
-    $('hdrProg').classList.toggle('pending', !!n.skipPending);
     // ETAs in the queue: what is left of the current track plus everything queued before the item
     let acc = nowRemaining();
     document.querySelectorAll('[data-eta]').forEach((s) => {

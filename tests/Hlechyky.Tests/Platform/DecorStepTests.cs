@@ -61,11 +61,25 @@ public class DecorStepTests
     public void Track_bars_move_without_css_transition()
     {
         var css = Web("static/style.css");
-        foreach (var sel in new[] { ".hdrprog > div", ".progress > div" })
+        foreach (var sel in new[] { ".hdrprog > i", ".progress > div" })
             Assert.DoesNotContain("transition", Rule(css, sel));
         // ширину ставить app.js кроком «по пікселю», а не tick раз на секунду з переходом
         var app = Web("app.js");
         Assert.Contains("function paintBars()", app);
         Assert.Matches(@"barTimer = setTimeout\(paintBars, Math\.max\(100,", app);
+    }
+
+    /// <summary>Капсула музики (10.11, раунд hdr-music «Б»): смужка треку з часом — у самому блоці музики, а не через
+    /// усю шапку; її малює paintNowInto, а paintBars переживає тишу, коли смужки нема.</summary>
+    [Fact]
+    public void Track_bar_lives_in_the_music_capsule()
+    {
+        var html = Web("index.html");
+        var header = html[html.IndexOf("<header>", StringComparison.Ordinal)..html.IndexOf("</header>", StringComparison.Ordinal)];
+        Assert.DoesNotContain("hdrProg", header);
+        Assert.Contains("<div class=\"tools\">", header);
+        var app = Web("app.js");
+        Assert.Matches(@"class=""mini-pr""><span id=""hdrEl"">[^`]*id=""hdrProg""><i id=""hdrBar""", app);
+        Assert.Contains("if (hb) hb.style.width = w;", app);
     }
 }
