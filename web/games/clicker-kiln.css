@@ -145,13 +145,8 @@
 .clkk-gorow { display: flex; gap: 6px; }
 .clkk-gorow .clkk-go { flex: 1 1 auto; min-width: 0; }
 .clkk-bare { flex: 0 1 auto; min-height: 46px; padding: 4px 10px; white-space: normal; line-height: 1.15; max-width: 9.5em; }
-/* Хто палить: два чипи — типово підмайстер, «палю сам» вмикає мінігру. */
-.clkk-who { display: flex; gap: 4px; }
-.clkk-wbtn {
-  flex: 1 1 0; min-width: 0; padding: 5px 6px; font-size: .82em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  border-radius: 9px; border: 1px solid var(--line); background: var(--panel); color: var(--muted);
-}
-.clkk-wbtn.on { color: var(--fg); border-color: var(--accent2); background: var(--panel3); }
+/* Хто палить (14.11): кнопка сама каже «· сам» чи «· підмайстер», а вирішує перемикач палія під нею. */
+.clkk-gowho { font-weight: 600; font-size: .78em; opacity: .75; }
 .clkk-whohint, .clkk-batch { line-height: 1.25; }
 
 /* Розпис — під горном: згорнутий вибір осередку, рядок технік разом із «Розписати» (на ПК — в один рядок). */
@@ -183,10 +178,11 @@
   border-radius: 6px; background: var(--accent2); color: #24170a; font-weight: 700;
 }
 .clkk-painthint { line-height: 1.3; }
-.clkk-auto { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; color: var(--muted); }
-/* v13 Б: три режими палія замість галочки — активний підсвічений, як кнопки способів обпалу. */
-.clkk-modes { display: inline-flex; flex-wrap: wrap; gap: 4px; }
-.clkk-mode { padding: 3px 8px; border-radius: 8px; white-space: nowrap; }
+/* Перемикач палія — єдиний «хто палить» (14.11): три рівні чипи на всю ширину, на місці старого «підмайстер / сам». */
+.clkk-auto { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 6px; color: var(--muted); }
+.clkk-autol { white-space: nowrap; }
+.clkk-modes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
+.clkk-mode { padding: 5px 6px; border-radius: 9px; min-width: 0; white-space: normal; line-height: 1.15; }
 .clkk-mode.on { color: var(--fg); border-color: var(--accent2); background: var(--panel3); box-shadow: inset 0 0 10px rgba(244, 197, 66, .15); }
 .clkk-mode:disabled { opacity: .5; cursor: default; }
 .clkk-mode:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

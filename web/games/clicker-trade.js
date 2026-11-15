@@ -83,8 +83,10 @@
   const tolokaN = (s) => Math.max(0, Math.min(s.canToloka || 0, s.n - s.loaded));
 
   /// Звідки якість, якої просить корабель: ліпленням її не обереш — вона від горна. Дзвінкі дає й підмайстер (QA-4),
-  /// а розкішні — лише розписана партія з рук.
-  const qHint = (api, q) => (q >= 4 ? 'розкішні — лише з розписаної партії, яку палиш сам' : '');
+  /// а розкішні — лише розписана партія (її палиш завжди сам, 14.11).
+  const qHint = (api, q) => (q >= 4 ? 'розкішні — лише з розписаної партії' : '');
+  /// Від якої краси розпису в партії трапляються розкішні (Clicker.PaintLux, каталог горна).
+  const luxFrom = (st) => (st.catalog && st.catalog.kiln && st.catalog.kiln.paintLux) || 50;
 
   /// Скільки з цієї штуки в коморі вільне (вид комори v12: kept = [толока, замовлення, майстерштук]) — корабель бере лише його.
   const freeOf = (it) => Math.max(0, it.n - (it.kept ? (it.kept[0] || 0) + (it.kept[1] || 0) + (it.kept[2] || 0) : 0));
@@ -214,7 +216,7 @@
       : '<button type="button" class="ghost small clkt-rel' + (armed ? ' armed' : '') + (k.busy ? ' off" aria-disabled="true' : '') + '" data-rel="' + s.id + '"'
         + ' title="Корабель відпливе з тим, що вже на борту (за нього заплачено), а новий прийде за ' + GAP_MIN + ' хв">'
         + (armed ? '⚓ Точно відпустити?' : '⚓ Відпустити корабель') + '</button>';
-    const btns = tolokaBtn(st, api, s) + (s.ware ? formBtn(st, api, s) : '') + rel;
+    const btns = tolokaBtn(st, api, s) + (s.ware ? formBtn(st, api, s) : '') + paintBtn(st, api, s) + rel;
     return '<div class="clkt-why small">' + esc(lack(st, api, s)) + (hint ? ' · ' + esc(hint) : '') + '</div>'
       + (btns ? '<div class="clkt-btns">' + btns + '</div>' : '');
   }
@@ -249,6 +251,36 @@
     }
     const label = c.ware === s.ware ? '🎨 Розпис «' + sname + '» на партію' : '🏺 Ліпити ' + acc + (sname ? ' (' + sname + ')' : '');
     return '<button type="button" class="ghost small clkt-form" data-form="' + esc(s.ware) + '" data-fstyle="' + esc(sty ? s.style : '') + '">' + esc(label) + '</button>';
+  }
+
+  /// Дія для якості, а не для виробу (записка #82, 14.11: посол просить «будь-які вироби», і кнопки «Ліпити» не було
+  /// зовсім — лише слова «розкішні — лише з розписаної партії»):
+  /// - бракує розкішних — «🎨 Розписати партію «Делфт»»: вибір техніки, розпис корабля — на партію; розпис з красою від
+  ///   порогу розкішних уже ліг — «🔥 Обпалити розписану»;
+  /// - «будь-які», але в розписі, і на горні інший — «🎨 Розпис «Делфт» на партію» (form з виробом, що вже на колі).
+  /// Розпису ще нема в колекції — кнопки нема (lack скаже «у коморі нема … «Делфт»»).
+  function paintBtn(st, api, s) {
+    const k = st.kView;
+    const c = st.craft;
+    if (!k || !c || !st.mine) return '';
+    const esc = (x) => api.esc(st, x);
+    if (s.style && !(st.styleList || []).some((x) => x.key === s.style && x.owned)) return '';
+    const sname = s.style ? styleName(st, s.style) : '';
+    const styleOk = !s.style || k.style === s.style;
+    const luxLeft = Math.max(0, s.lux - s.loadedLux);
+    if (luxLeft > 0) {
+      if (styleOk && k.beauty >= luxFrom(st)) {
+        return '<button type="button" class="ghost small clkt-paint" data-kfire="1"' + (k.state === 'burning' || k.state === 'cooling' ? ' disabled' : '') + '>'
+          + '🔥 Обпалити розписану · краса ' + k.beauty + '</button>';
+      }
+      return '<button type="button" class="ghost small clkt-paint" data-kpaint="' + esc(s.style || '') + '"' + (k.state === 'burning' ? ' disabled title="Розписують до обпалу — горно вже палає"' : '') + '>'
+        + '🎨 Розписати партію' + (sname ? ' «' + esc(sname) + '»' : '') + '</button>';
+    }
+    if (!s.ware && !styleOk) {
+      return '<button type="button" class="ghost small clkt-form" data-form="' + esc(c.ware) + '" data-fstyle="' + esc(s.style) + '">'
+        + '🎨 Розпис «' + esc(sname) + '» на партію</button>';
+    }
+    return '';
   }
 
   /// Виріб на коло, а коли замовлення просить розпис — і розпис на партію (без нього корабель такого не прийме): усе
@@ -522,6 +554,17 @@
     if (go) { if (human(e)) goShop(st, api, go.dataset.goshop); return; }
     const f = e.target.closest('[data-form]');
     if (f) { if (human(e) && st.mine) formIt(st, api, f.dataset.form, f.dataset.fstyle || ''); return; }
+    // Розпис для корабля (#82): вибір техніки з розписом корабля; готовий розпис — обпалити самому, тоді й у горно.
+    const pt = e.target.closest('[data-kpaint]');
+    if (pt) {
+      if (human(e) && st.mine && api.startPaint) { api.sfx('tap'); api.startPaint(st, pt.dataset.kpaint || undefined); }
+      return;
+    }
+    const kf = e.target.closest('[data-kfire]');
+    if (kf) {
+      if (human(e) && st.mine && api.fireKiln) { api.sfx('tap'); api.showTab(st, 'craft'); api.fireKiln({ hand: true }); }
+      return;
+    }
     const rel = e.target.closest('[data-rel]');
     if (rel) { release(st, api, rel, e); return; }
     const kept = e.target.closest('[data-loadt]');

@@ -1068,6 +1068,9 @@ public sealed partial class Clicker
         // робота: «seen» шле сам клієнт після кожної партії, а невдалий натиск горна не чіпав — інакше палій після кожного
         // обпалу стояв три хвилини, і сушарня в того, хто просто клацає, доходила до стелі (23.10).
         if (r.Ok && !helperBurning && op is "load" or "light" or "open" or "paint" or "decor") _kilnTouch = now;
+        // «Палю сам», а палій саме палить свою: наступна партія — гончарева, палій її не перехопить (з розписом, що чекає
+        // рук, — KilnIdle; 14.11).
+        else if (r.Ok && helperBurning && op == "light" && !Flag(payload, "helper")) _kilnTouch = now;
         return r;
     }
 
@@ -1091,9 +1094,13 @@ public sealed partial class Clicker
     /// </summary>
     ActResult KilnLight(JsonElement payload, DateTimeOffset now)
     {
-        if (_litAt != default) return _litHelper ? HelperLit(now) : ActResult.Fail("Горно вже палає");
-        if (now < _coolUntil) return ActResult.Fail($"Горно ще гаряче — холоне {Wait(_coolUntil - now)}");
         var helper = Flag(payload, "helper");
+        if (_litAt != default) return _litHelper ? HelperLit(now, mine: !helper && _kilnBeauty > 0) : ActResult.Fail("Горно вже палає");
+        // Горно холоне, а розпис чекає рук: «Наступну палю сам» — прийнято (дотик горна в ActKiln), палій її не займе (14.11).
+        if (now < _coolUntil)
+            return !helper && _kilnBeauty > 0
+                ? ActResult.Accept($"♨ Горно холоне ще {Wait(_coolUntil - now)} — наступну партію палиш ти, з розписом")
+                : ActResult.Fail($"Горно ще гаряче — холоне {Wait(_coolUntil - now)}");
         var straw = !helper && Flag(payload, "straw");
         if (straw && _straw <= 0) return ActResult.Fail("Соломи нема — купи в'язку або пали без неї");
         if (_kiln.Count == 0)
@@ -1121,10 +1128,11 @@ public sealed partial class Clicker
     /// «Обпалити», а палій щойно розпалив сам (синхронізація перед дією): гончар хотів того самого — це не помилка, а
     /// новина. Без цього натиск давав два червоні тости «горно вже палає» під досі холодним горном на екрані (23.10).
     /// </summary>
-    ActResult HelperLit(DateTimeOffset now)
+    ActResult HelperLit(DateTimeOffset now, bool mine = false)
     {
         var left = _litAt + KilnBurn - now;
-        return ActResult.Accept($"🔥 Палій уже розпалив: {_kiln.Count} {WaresWord(_kiln.Count)} — відкриє сам за {Math.Max(1, Math.Ceiling(left.TotalSeconds)):0} с");
+        return ActResult.Accept($"🔥 Палій уже розпалив: {_kiln.Count} {WaresWord(_kiln.Count)} — відкриє сам за {Math.Max(1, Math.Ceiling(left.TotalSeconds)):0} с"
+            + (mine ? ". Наступна — твоя, з розписом" : ""));
     }
 
     /// <summary>
@@ -1345,17 +1353,24 @@ public sealed partial class Clicker
         if (manual && outs.Sum(o => o.Q >= 4 ? DayPointsQ4 : o.Q == 3 ? DayPointsQ3 : 0) is var day and > 0)
             DaySvc()?.Add(Ctx.NickOf(0), day, at);
 
+        // Партію палія (сам чи «хай підмайстер палить») розпис не зачепив — він чекає ручного обпалу (14.11, записка #83:
+        // підмайстер більше не «стирає красу»). Покинуте ручне горно (KilnAbandon) розпис палило — той згорів разом із ним.
+        var keepPaint = !manual && _litHelper && _kilnBeauty > 0;
         KilnEmpty();
         _litAt = default;
         _litHelper = false;
         _litStraw = false;
         _fireSeed = 0;
-        _kilnTech = "";
-        _kilnBeauty = 0;
         _paintSeed = 0;
-        // Розпис, що чекав цієї партії (KilnStyleFor), — тепер на горно.
-        if (_kilnNext.Length > 0 && _styles.Contains(_kilnNext)) _kilnStyle = _kilnNext;
-        _kilnNext = "";
+        if (!keepPaint)
+        {
+            _kilnTech = "";
+            _kilnBeauty = 0;
+            // Розпис, що чекав цієї партії (KilnStyleFor), — тепер на горно. Розпис, що чекає рук, — ще ні: «далі» стане
+            // після нього.
+            if (_kilnNext.Length > 0 && _styles.Contains(_kilnNext)) _kilnStyle = _kilnNext;
+            _kilnNext = "";
+        }
         _coolUntil = at + KilnCoolNow;
 
         var parts = new List<string>();
@@ -1443,29 +1458,47 @@ public sealed partial class Clicker
     /// Автогорно (v9): палій не чекає повної сушарні. Горно холодне й порожнє, ручної партії нема — і або сухих
     /// назбиралось на пів горна (до шести), або сухий хоч один, а гончар не підходив до горна три хвилини. Палить
     /// підмайстер: без тріщин і без розпису, зате з власним «блиском» від прокачки «Палія».
+    /// 14.11: ні готовий розпис, ні складена партія більше не тримають його навіки — лише поки гончар біля горна
+    /// (<see cref="KilnIdle"/> від дотику); розпис палій не чіпає, той чекає ручного обпалу.
     /// </summary>
     void AutoKiln(DateTimeOffset now)
     {
         // Режим «лише руками» і повна сушарня: відлік для поради Глека «палій сидить» (ClickerAdvisor.cs).
         if (KilnAutoCan && _kilnAutoMode == KilnAutoMode.Hands && _rack.Count >= RackSize) { if (_rackFullAt == default) _rackFullAt = now; }
         else _rackFullAt = default;
-        if (!KilnAutoOn || _litAt != default || now < _coolUntil || _kiln.Count > 0) return;
+        if (!KilnAutoOn || _litAt != default || now < _coolUntil) return;
         // «Коли мене нема»: поки гончар тут, палій не бере ні неповної, ні повної сушарні — усе його (v13 Б).
         if (_kilnAutoMode == KilnAutoMode.Away && KilnPotterHere(now)) return;
-        // Гравець уже взявся за партію (обрав розпис, малює чи намалював) — підмайстри не забирають її з-під рук.
-        // Обраний розпис сам по собі партією не є: після KilnFinish він лишається як побажання «пали в косівському»,
-        // і без цієї поправки палій офлайн не вмикався б ніколи в того, хто хоч раз розписав партію (рецензія v9).
-        // Покинутий візерунок (понад PatternLife) партією теж не є: палій стояв би, доки гончар не згадає про розпис (23.10).
-        if ((_paintSeed != 0 && now - _paintAt <= PatternLife) || _kilnBeauty > 0) return;
-        var ready = _rack.Count(r => r.DryAt <= now);
-        // Сушарня повна — нові сирці нікуди класти, тож палій бере партію, хоч би хто чіпав горно (23.10: у того, хто просто
-        // клацає, сушарня стояла 46/46, і кліки йшли впусту). Дотиком «seen» і невдалі натиски більше не є (ActKiln).
-        // Лише не просто зараз: хто щойно обрав розпис, за півхвилини натисне «Розписати» — партія його.
-        var full = _rack.Count >= RackSize && now - _kilnTouch >= KilnFullGrace;
-        if (!full && _kilnStyle.Length > 0 && _kilnTouch != default && now - _kilnTouch < KilnIdle) return;
-        if (!full && ready < Math.Min(KilnSlots, AutoDryEnough) && !(ready >= 1 && now - _kilnTouch >= KilnIdle)) return;
-        var dry = TakeDry(now, KilnSlots);
-        if (dry.Count == 0) return;
+        // Гравець малює просто зараз — підмайстри не забирають партію з-під рук. Покинутий візерунок (понад PatternLife)
+        // партією вже не є: палій стояв би, доки гончар не згадає про розпис (23.10).
+        if (_paintSeed != 0 && now - _paintAt <= PatternLife) return;
+        // Готовий розпис (краса) — гончарів: його палять лише руками, а палій його не чіпає (KilnFinish лишає красу
+        // на ручний обпал). Тож розпис і не зупиняє палія: поки гончар біля горна (KilnIdle від дотику), горно його —
+        // навіть із повною сушарнею; далі палій пече свої партії без краси. Раніше `_kilnBeauty > 0` тримало палія
+        // назавжди: 14.11 у владіка розпис з красою 100 пролежав чотири дні, сушарня 46/46 і жодної партії (записка #83).
+        var painted = _kilnBeauty > 0;
+        var touched = _kilnTouch != default && now - _kilnTouch < KilnIdle;
+        if (painted && touched) return;
+        if (_kiln.Count > 0)
+        {
+            // Складена, але не розпалена партія («у горно» без «розпалити», «Обпалити» на гарячому горні) теж тримала
+            // палія навіки — `_kiln.Count > 0` (14.11). Поки гончар біля горна — партія його; далі палій докладає сухі й палить.
+            if (touched) return;
+        }
+        else
+        {
+            var ready = _rack.Count(r => r.DryAt <= now);
+            // Сушарня повна — нові сирці нікуди класти, тож палій бере партію, хоч би хто чіпав горно (23.10: у того, хто
+            // просто клацає, сушарня стояла 46/46, і кліки йшли впусту). Дотиком «seen» і невдалі натиски більше не є (ActKiln).
+            // Лише не просто зараз: хто щойно обрав розпис, за півхвилини натисне «Розписати» — партія його.
+            // Обраний розпис сам по собі партією не є: після KilnFinish він лишається як побажання «пали в косівському»,
+            // і палій пече в ньому теж (рецензія v9).
+            var full = _rack.Count >= RackSize && now - _kilnTouch >= KilnFullGrace;
+            if (!full && _kilnStyle.Length > 0 && touched) return;
+            if (!full && ready < Math.Min(KilnSlots, AutoDryEnough) && !(ready >= 1 && now - _kilnTouch >= KilnIdle)) return;
+        }
+        var dry = TakeDry(now, KilnSlots - _kiln.Count);
+        if (_kiln.Count == 0 && dry.Count == 0) return;
         KilnPut(dry);
         _litAt = now;
         _litHelper = true;
@@ -1650,6 +1683,7 @@ public sealed partial class Clicker
         // Розпис і розкішний ступінь (v9): клієнт бере звідси, щоб не повторювати чисел.
         luxShare = KilnHeat.LuxShare, paintLux = PaintLux, glazeDrip = KilnPaint.GlazeDrip,
         stampGrace = KilnPaint.StampGrace, stampWindow = KilnPaint.StampWindow, autoIdleMs = KilnIdle.TotalMilliseconds,
+        autoDry = AutoDryEnough,
         model = new
         {
             stepMs = KilnHeat.StepMs, steps = KilnHeat.Steps, warm = KilnHeat.WarmSteps, maxActs = KilnHeat.MaxActs,

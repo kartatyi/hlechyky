@@ -3,9 +3,10 @@
 
   Правила — на сервері (Impl/ClickerKiln.cs). Тут:
   1) вкладка «Горно»: велике SVG-горно (вироби в камері, полум'я, дим, заслінка), сухі сирці → горно (kiln/load),
-     розпис партії, солома, «палити самому» / «хай підмайстер палить» (kiln/light);
-  2) обпал в один дотик (v8): одна кнопка «🔥 Обпалити N» сама складає сухі й розпалює, а палить типово підмайстер;
-     «Палю сам» вмикає мінігру жару: та сама модель, що й KilnHeat на сервері, крок 100 мс, рядок у рядок та сама арифметика (лише + − × ÷,
+     розпис партії, солома, перемикач палія (guild/auto) — він же вирішує, хто палить на «Обпалити» (kiln/light, 14.11);
+  2) обпал в один дотик (v8): одна кнопка «🔥 Обпалити N» сама складає сухі й розпалює; палить сам гончар (розписана
+     партія, палій «коли мене нема» / «лише руками») чи підмайстер («завжди», палія ще нема — byHand).
+     Сам — це мінігра жару: та сама модель, що й KilnHeat на сервері, крок 100 мс, рядок у рядок та сама арифметика (лише + − × ÷,
      min/max; пориви й поліна — xorshift32 із зерна view.kiln.seed). Клієнт записує СВОЇ дії [мс від розпалу, дія] і після
      30 с шле їх разом на kiln/open — сервер проганяє модель сам. Таймлайн лежить у localStorage: F5 посеред обпалу не губить дій;
   3) мінігри розпису (overlay): ріжкування (коло крутиться), ритування (контур), фляндрування (штрихи через смуги),
@@ -38,8 +39,13 @@
   const TECH_ICON = { rizh: '🌀', flyand: '🌲', marble: '💧', ryt: '✒️', losk: '🪨', brush: '🖌', stamp: '🔘', glaze: '🫗', kobalt: '🔵', raku: '🍵' };
   /// Техніки дев'ятого оновлення: у старих гравців вони мусять світитись «нове», у нових — ні.
   const NEW_TECHS = ['brush', 'stamp', 'glaze'];
-  /// Хто палить: підмайстер (типово, без мінігри) чи сам гончар. Пам'ятаємо між заходами.
-  const selfFire = (api) => api.storeGet('clk.kiln.self', '0') === '1';
+  /// Режим палія з виду (старий сервер шле лише auto).
+  const autoMode = (k) => k.autoMode || (k.auto ? 'always' : 'hands');
+  /// Хто палить, коли гончар тисне «Обпалити» (14.11, слово користувача: «навіщо перемикач "підмайстер / палю сам",
+  /// якщо є три режими палія» — перемикач прибрано, лишився один). Розписану партію — завжди сам: палій розпису не
+  /// чіпає (ClickerKiln.KilnFinish). Інакше — режим палія: «завжди» (і в того, хто палія ще не має) — підмайстер одним
+  /// дотиком; «коли мене нема» й «лише руками» — сам, мінігрою жару.
+  const byHand = (k) => !!k && (k.beauty > 0 || (!!k.autoCan && autoMode(k) !== 'always'));
   /// Одна шкала зірок на все коло (v12): ★ звичайний, ★★ добрий, ★★★ дзвінкий, 👑 розкішний — як у коморі й альбомі.
   /// Було: у горні ★ — добрий, а в коморі ★ — звичайний (плейтест 21.10).
   const STARS = ['💥', '★', '★★', '★★★', '👑'];
@@ -248,17 +254,18 @@
       + '<div class="clkk-prep"></div>'
       + '<div class="clkk-last"></div>'
       + '<details class="clkk-help small"><summary>Як це працює</summary>'
-      + '<p>Виліплений виріб сохне на сушарні; сухий — у горно. «Обпалити» саме складає сухі й розпалює. Палить '
-      + 'підмайстер — без мінігри й тріщин, зате й без краси розпису: здебільшого звичайні; «Палю сам» — мінігра на пів хвилини: чим довше жар у зеленій '
-      + 'смузі, тим більше добрих і дзвінких. Перегрів тріскає глину, солома ділить цей ризик на чотири. Після '
-      + 'відкриття горно холоне хвилину.</p>'
+      + '<p>Виліплений виріб сохне на сушарні; сухий — у горно. «Обпалити» саме складає сухі й розпалює, а хто палить — '
+      + 'каже сама кнопка. Підмайстер — без мінігри й тріщин, зате й без краси розпису: здебільшого звичайні. Сам — мінігра на '
+      + 'пів хвилини: чим довше жар у зеленій смузі, тим більше добрих і дзвінких. Розписану партію палиш завжди сам; решту — '
+      + 'як скаже перемикач палія. Перегрів тріскає глину, солома ділить цей ризик на чотири. Після відкриття горно холоне хвилину.</p>'
       + '<p>Розпис лягає на всю партію. Техніка-мінігра дає «красу» 0–100: вона підвищує шанс доброї й дзвінкої якості '
       + '(але не множить ціну). Дзвінкий виріб вартий ×2,6, добрий ×1,6. Косівське ритування, гаварецьке лощіння, '
       + 'петриківський пензель, трипільський штампик і межигірська полива в «рідному» розписі дають +10 краси.</p>'
       + '<p>Розкішний виріб (×4,5) буває лише з розписаної партії — і то коли вийшла й краса, і жар: при ідеальних '
       + 'обох чверть партії виходить розкішною. Нерозписана партія від цього не втратила нічого.</p>'
-      + '<p>Палій (челядник цеху або прокачаний «Палій» у ремеслі) розпалює горно сам, коли гончар його не '
-      + 'чіпає: без тріщин, без розпису й без розкішних, зате хоч уночі.</p></details>'
+      + '<p>Палій (челядник цеху або прокачаний «Палій» у ремеслі) розпалює горно сам: без тріщин, без краси розпису '
+      + 'й без розкішних, зате хоч уночі. Перемикач під кнопкою: «завжди» — і при тобі, «коли мене нема» — коли ти пішов, '
+      + '«лише руками» — ніколи. Розпис, що чекає твоїх рук, палій не чіпає й через нього не стоїть.</p></details>'
       + '</div>';
     const q = (s) => pane.querySelector(s);
     st.kUi = {
@@ -496,6 +503,8 @@
 
   /// Від якої краси в партії вже трапляються розкішні вироби (сервер шле це в каталозі).
   const luxFrom = (st) => (cat(st) && cat(st).paintLux) || 50;
+  /// Скільки сухих досить палієві, щоб узятись, не чекаючи повної сушарні (Clicker.AutoDryEnough).
+  const autoDry = (st) => (cat(st) && cat(st).autoDry) || 6;
 
   /// Чи можна розписати партію: є куплений розпис (без нього секції розпису нема) і відкрита техніка.
   const canPaint = (st) => !!st.kView && (st.kView.techs || []).length > 0 && (st.styleList || []).some((x) => x.owned);
@@ -543,29 +552,30 @@
   const markTechsSeen = (st, api) => api.storeSet('clk.techseen', ((st.kView && st.kView.techs) || []).join(','));
 
   /// Вибір техніки: картки з малюнком і словом про те, як грається. «Навмання» — для тих, кому все одно.
-  /// sure — про стерту красу вже спитали (keepBeauty).
-  function pickTech(st, api, sure) {
+  /// sure — про стерту красу вже спитали (keepBeauty); style — малювати цим розписом, а не тим, що на горні.
+  function pickTech(st, api, sure, style) {
     const k = st && st.kView;
     // Кличе й смуга «Далі» (clicker-craft.js), коли панель горна ще навіть не на очах, — вікно однаково відкриється.
     if (!k || !st.mine) return;
     if (k.state === 'burning') { api.toast(st, 'Розписують до обпалу — горно вже палає', 'err'); return; }
-    if (k.beauty > 0 && !sure) { keepBeauty(st, api, 'Новий розпис', () => pickTech(st, api, true)); return; }
+    if (k.beauty > 0 && !sure) { keepBeauty(st, api, 'Новий розпис', () => pickTech(st, api, true, style)); return; }
     // Розписують те, що піде в горно наступним: партію в ньому або сухі з сушарні — їх складе «Обпалити».
     const load = api.kilnLoad ? api.kilnLoad() : k.batch.length + (k.dry || 0);
     if (!load) { api.toast(st, 'Розписують перед обпалом — спершу виліпи й висуши щось', 'err'); return; }
     const all = (cat(st) && cat(st).techs) || [];
     const open = all.filter((t) => k.techs.includes(t.key));
     if (!open.length) return;
-    if (open.length === 1) { rememberTech(api, open[0].key); startPaint(st, api, open[0].key); return; }
+    const sty = style != null ? style : k.style;
+    if (open.length === 1) { rememberTech(api, open[0].key); startPaint(st, api, open[0].key, sty); return; }
     const fresh = newTechs(st, api);
     const esc = (x) => api.esc(st, x);
     const last = api.storeGet('clk.tech', '');
     const card = (t) => '<button type="button" class="clkk-card' + (t.key === last ? ' on' : '')
-      + (t.home && t.home === k.style ? ' home' : '') + '" data-pick="' + esc(t.key) + '" title="' + esc(HOWTO[t.key] || t.desc) + '">'
+      + (t.home && t.home === sty ? ' home' : '') + '" data-pick="' + esc(t.key) + '" title="' + esc(HOWTO[t.key] || t.desc) + '">'
       + '<span class="clkk-ctop"><span class="clkk-cicon">' + (TECH_ICON[t.key] || '🎨') + (fresh.includes(t.key) ? '<i class="clkk-new">нове</i>' : '') + '</span>'
       + '<b>' + esc(t.name) + '</b></span><span class="muted small clkk-cdesc">' + esc(SHORT[t.key] || HOWTO[t.key] || t.desc) + '</span>'
       + '<span class="muted small clkk-cfull">' + esc(HOWTO[t.key] || t.desc) + '</span>'
-      + (t.home && t.home === k.style ? '<span class="clkk-home small">рідна техніка: +10 краси</span>' : '') + '</button>';
+      + (t.home && t.home === sty ? '<span class="clkk-home small">рідна техніка: +10 краси</span>' : '') + '</button>';
     const locked = all.filter((t) => !k.techs.includes(t.key));
     // Компактні плитки (F5/F6): значок, назва й два рядки опису; повний опис — за ⓘ у шапці вікна, «Навмання» — теж
     // у шапці. Було: дев'ять високих карток — 1 400 px одним стовпцем на телефоні, а на макбуку вікно вище за картку.
@@ -586,7 +596,7 @@
     // Вікно — за спільним правилом кола: вміст уже домальовано, тож перемірюємо.
     api.placeOverlay(st);
     markTechsSeen(st, api);
-    const go = (tech) => { rememberTech(api, tech); api.closeOverlay(st); startPaint(st, api, tech); };
+    const go = (tech) => { rememberTech(api, tech); api.closeOverlay(st); startPaint(st, api, tech, sty); };
     for (const el of body.querySelectorAll('[data-pick]')) el.onclick = () => go(el.dataset.pick);
     body.querySelector('.clkk-any').onclick = () => go(open[Math.floor(Math.random() * open.length)].key);
   }
@@ -599,7 +609,46 @@
     const mine = st.mine;
     const burning = k.state === 'burning';
     const cooling = k.state === 'cooling';
-    if (burning) { api.swap(ui.prep, ''); api.swap(ui.fire, ''); return; }
+    // Ручний обпал — під горном мінігра жару, решта ховається.
+    if (burning && !k.helper) { api.swap(ui.prep, ''); api.swap(ui.fire, ''); return; }
+    const mode = autoMode(k);
+    const hand = byHand(k);
+    // Перемикач палія — єдиний «хто палить» (14.11): на місці старого «підмайстер / сам», і видно його й тоді, коли
+    // палає партія палія (раніше на ці пів хвилини він зникав разом з усім рядком).
+    const modes = k.autoCan
+      ? '<div class="clkk-auto small"><span class="clkk-autol">🧑‍🏭 Палій</span>'
+        + '<span class="clkk-modes" role="group" aria-label="Коли палить палій">'
+        + AUTO_MODES.map(([key, label]) => '<button type="button" class="ghost small clkk-mode' + (mode === key ? ' on' : '') + '" data-mode="' + key
+          + '" aria-pressed="' + (mode === key) + '"' + (mine ? '' : ' disabled') + '>' + label + '</button>').join('')
+        + '</span>'
+        + api.info('Один перемикач вирішує, хто палить. '
+          + '🔥 Завжди — палій бере партію сам, щойно сухих ' + autoDry(st) + '+ (або горна не чіпали '
+          + Math.round((((cat(st) && cat(st).autoIdleMs) || 180000) / 60000)) + ' хв), хоч би ти стояв біля кола; «Обпалити» кличе підмайстра одразу, без мінігри. '
+          + '🌙 Коли мене нема — поки ти тут, палиш сам (мінігра жару); пішов (5 хв без дій руками чи «Закрити») — палить палій. '
+          + '✋ Лише руками — палиш тільки сам. '
+          + 'Розписану партію завжди палиш сам: палій розпису не чіпає, а свої партії пече без нього — без тріщин, але й без краси. '
+          + 'Прокачаний «Палій» пече дзвінкіше.') + '</div>'
+      : '';
+    const bindModes = () => {
+      for (const b of ui.fire.querySelectorAll('.clkk-mode')) b.onclick = () => { if (!b.classList.contains('on')) api.order(st, 'guild', { op: 'auto', mode: b.dataset.mode }); };
+    };
+    // Палає партія палія: розписувати не можна, «Обпалити» нема — лише хто й що, і перемикач. Розпис чекає рук — тоді
+    // «Наступну палю сам»: палій не перехопить наступну партію (сервер рахує це дотиком горна).
+    if (burning) {
+      api.swap(ui.prep, '');
+      const waits = k.beauty > 0;
+      const html = '<div class="muted small clkk-whohint">' + (waits
+        ? '🎨 Розпис (краса ' + k.beauty + ') чекає твоїх рук — палій пече свою партію без нього'
+        : '👷 Палить підмайстер — відкриє сам, щойно догорить') + '</div>'
+        + (waits && mine ? '<button type="button" class="primary clkk-go clkk-claim">🔥 Наступну палю сам</button>' : '')
+        + modes;
+      if (api.swap(ui.fire, html)) {
+        bindModes();
+        const c = ui.fire.querySelector('.clkk-claim');
+        if (c) c.onclick = () => api.order(st, 'kiln', { op: 'light' });
+      }
+      return;
+    }
     const counts = {};
     for (const w of k.batch) counts[w] = (counts[w] || 0) + 1;
     const inKiln = Object.keys(counts).map((w) => esc(wareName(st, w)).toLowerCase() + ' ×' + counts[w]).join(', ');
@@ -655,29 +704,40 @@
 
     // Головна кнопка: сама складає сухі й розпалює. Стоїть поруч із горном (.clkk-fire), а не під ним.
     const can = mine && !cooling && load > 0;
-    const mySelf = selfFire(api);
     const batchText = (k.batch.length ? 'у горні ' + k.batch.length + ' з ' + k.slots + ': ' + inKiln : 'сухих на сушарні ' + k.dry)
       // Тонкі сирці з каоліну (21.10) виходять розкішними, хоч би хто й як палив, — аби не тріснули.
       + (k.thin > 0 ? ' · ✨ тонких ' + k.thin + ' — вийдуть розкішними' : '');
-    // «Палю сам», а партія не розписана (v12, плейтест §2.3): розпис — у потоці, «без розпису» — лише явним вибором.
-    const bare = can && mySelf && !(k.beauty > 0) && canPaint(st);
-    const go = bare
-      ? '<div class="clkk-gorow"><button type="button" class="primary clkk-go clkk-paintgo">🎨 Розписати й обпалити ' + load + '</button>'
+    // Палиш сам, а партія не розписана (v12, плейтест §2.3): розпис — у потоці, «без розпису» — лише явним вибором.
+    const bare = can && hand && !(k.beauty > 0) && canPaint(st);
+    const n = load ? ' ' + load : '';
+    // Кнопка каже, хто палитиме (14.11): «· сам» чи «· підмайстер».
+    // Горно холоне, а розпис чекає рук — «Наступну палю сам» (сервер прийме як дотик): інакше палій міг узяти сухі
+    // в ту ж мить, як вихолоне, а «Обпалити» до того стоїть сіре.
+    const claim = cooling && mine && k.beauty > 0;
+    const go = claim
+      ? '<button type="button" class="primary clkk-go clkk-claim">🔥 Наступну палю сам <small class="clkk-gowho">· краса ' + k.beauty + '</small></button>'
+      : bare
+      ? '<div class="clkk-gorow"><button type="button" class="primary clkk-go clkk-paintgo">🎨 Розписати й обпалити' + n + '</button>'
         + '<button type="button" class="ghost clkk-bare">🔥 Без розпису</button></div>'
-      : '<button type="button" class="primary clkk-go"' + (can ? '' : ' disabled') + '>🔥 Обпалити' + (load ? ' ' + load : '') + '</button>';
+      : '<button type="button" class="primary clkk-go"' + (can ? '' : ' disabled') + '>'
+        + (hand ? '🔥 Обпалити' + n + ' <small class="clkk-gowho">· сам' + (k.beauty > 0 ? ', краса ' + k.beauty : '') + '</small>'
+          : '👷 Обпалити' + n + ' <small class="clkk-gowho">· підмайстер</small>') + '</button>';
+    const palii = k.autoCan && mode !== 'hands';
     const fire = go
-      + '<div class="clkk-who"><button type="button" class="clkk-wbtn' + (mySelf ? '' : ' on') + '" data-self="0">👷 Палить підмайстер</button>'
-      + '<button type="button" class="clkk-wbtn' + (mySelf ? ' on' : '') + '" data-self="1">🔥 Палю сам</button></div>'
-      + '<div class="muted small clkk-whohint">' + (mySelf
-        ? 'мінігра на пів хвилини: тримай жар у смузі — буде більше добрих і дзвінких, але й тріщини можливі'
-        : k.beauty > 0
-          ? '⚠ партія розписана (краса ' + k.beauty + '), а підмайстер палить без краси — вона згорить'
-          : 'без мінігри й без тріщин, але здебільшого звичайні: дзвінкі (×2,6) дає уважний палій') + '</div>'
+      + '<div class="muted small clkk-whohint">' + (k.beauty > 0
+        ? '🎨 Розпис (краса ' + k.beauty + ') чекає твоїх рук: розписану партію палиш сам — мінігра жару на пів хвилини'
+          + (palii ? '. Палій її не чіпає, а свої партії пече без розпису' : '')
+        : hand
+          ? 'палиш сам — мінігра на пів хвилини: тримай жар у смузі — більше добрих і дзвінких, але й тріщини можливі'
+            + (mode === 'away' ? '. Підеш (5 хв без рук чи «Закрити») — палитиме палій' : '')
+          : 'палить підмайстер одразу — без мінігри й без тріщин'
+            + (k.autoCan ? '; а сам палій бере партію, щойно сухих ' + autoDry(st) + '+' : '; розпишеш партію — палитимеш сам, мінігрою')) + '</div>'
+      + modes
       + '<div class="muted small clkk-batch">' + batchText + (cooling ? ' · горно ще гаряче — зачекай, поки вихолоне' : '') + '</div>';
 
     // Солома — дрібниця для тих, хто палить сам: ховаємо за ▾, щоб не займала екран.
     const loft = k.strawMax || 20;
-    const straw = mySelf
+    const straw = hand
       ? '<details class="clkk-strawsec"><summary>🌾 Солома: ' + k.straw + ' з ' + loft + '</summary>'
         + '<div class="clkk-row"><div class="muted small">в\'язка в горні — тріщин учетверо менше</div>'
         // Без соломи «класти» не стоїть позначеним (QA-3: ☑ при 0); «доверху» — один натиск і один тост замість десятка.
@@ -690,35 +750,16 @@
         + '</div></div></details>'
       : '';
 
-    // Палій: коли він доступний, гончар мусить бачити, що горно може палати й без нього — і вміти це спинити.
-    // v13 Б: три режими замість галочки — завжди / коли мене нема / лише руками.
-    const mode = k.autoMode || (k.auto ? 'always' : 'hands');
-    const auto = k.autoCan
-      ? '<div class="clkk-auto small"><span>🧑‍🏭 Палій</span>'
-        + '<span class="clkk-modes" role="group" aria-label="Коли палить палій">'
-        + AUTO_MODES.map(([key, label]) => '<button type="button" class="ghost small clkk-mode' + (mode === key ? ' on' : '') + '" data-mode="' + key
-          + '" aria-pressed="' + (mode === key) + '"' + (mine ? '' : ' disabled') + '>' + label + '</button>').join('')
-        + '</span>'
-        + api.info('Палій розпалює горно сам, без тріщин, в обраному розписі, але без «краси» з мінігри; за ніч так обпалюються десятки партій. '
-          + 'Прокачаний «Палій» пече дзвінкіше. Режими: '
-          + '🔥 завжди — палить, коли горно холодне й сухих назбиралось хоч трохи (або горна не чіпали '
-          + Math.round((((cat(st) && cat(st).autoIdleMs) || 180000) / 60000)) + ' хв), хоч би ти стояв біля кола; '
-          + '🌙 коли мене нема — палить лише коли ти пішов (5 хв без дій руками чи «Закрити»), поки ти тут, сушарня й горно твої; '
-          + '✋ лише руками — не палить зовсім.') + '</div>'
-      : '';
-
-    if (api.swap(ui.fire, fire + straw + auto)) {
+    if (api.swap(ui.fire, fire + straw)) {
       const f = (sel) => ui.fire.querySelector(sel);
-      for (const b of ui.fire.querySelectorAll('.clkk-mode')) b.onclick = () => { if (!b.classList.contains('on')) api.order(st, 'guild', { op: 'auto', mode: b.dataset.mode }); };
+      bindModes();
       for (const b of ui.fire.querySelectorAll('.clkk-buystraw')) b.onclick = () => api.order(st, 'kiln', { op: 'straw', n: +b.dataset.n });
       if (f('.clkk-strawon')) f('.clkk-strawon').onchange = (e) => api.storeSet('clk.kiln.straw', e.target.checked ? '1' : '0');
-      for (const el of ui.fire.querySelectorAll('[data-self]')) {
-        el.onclick = () => { api.storeSet('clk.kiln.self', el.dataset.self); api.sfx('tap'); paintPrep(st, api); };
-      }
-      if (f('.clkk-paintgo')) {
+      if (f('.clkk-claim')) f('.clkk-claim').onclick = () => api.order(st, 'kiln', { op: 'light' });
+      else if (f('.clkk-paintgo')) {
         f('.clkk-paintgo').onclick = () => pickTech(st, api);
-        f('.clkk-bare').onclick = () => (api.fireKiln ? api.fireKiln({ bare: true }) : api.order(st, 'kiln', { op: 'light', helper: true }));
-      } else f('.clkk-go').onclick = () => (api.fireKiln ? api.fireKiln() : api.order(st, 'kiln', { op: 'light', helper: true }));
+        f('.clkk-bare').onclick = () => (api.fireKiln ? api.fireKiln({ bare: true }) : api.order(st, 'kiln', { op: 'light', helper: !hand }));
+      } else f('.clkk-go').onclick = () => (api.fireKiln ? api.fireKiln() : api.order(st, 'kiln', { op: 'light', helper: !hand }));
     }
     if (api.swap(ui.prep, paint)) {
       const b = (sel) => ui.prep.querySelector(sel);
@@ -937,11 +978,11 @@
 
   // ---------- розпис (мінігри) ----------
 
-  function startPaint(st, api, tech) {
+  function startPaint(st, api, tech, style) {
     const k = st.kView;
     if (!k || !st.mine) return;
     st.kPaintWant = tech;
-    api.act(st, 'kiln', { op: 'paint', style: k.style, tech }).then((r) => { if (!r || !r.ok) st.kPaintWant = null; });
+    api.act(st, 'kiln', { op: 'paint', style: style != null ? style : k.style, tech }).then((r) => { if (!r || !r.ok) st.kPaintWant = null; });
   }
 
   /// Прийшов вид із новим візерунком, який ми самі попросили, — відкрити мінігру.
@@ -1936,10 +1977,11 @@
     g.svg.classList.add('over');
     note(g, lux ? 'Розпис ліг на партію — у ній трапляться й розкішні вироби.' : 'Розпис ліг на всю партію в горні.');
     g.howto.classList.remove('clkk-warn');
-    // «Палю сам» і є що палити — обпал одразу звідси («Розписати й обпалити»), тоді вікно не зачиняється саме.
+    // Розписану партію палиш сам (14.11) — тож є що палити, обпал одразу звідси, і вікно не зачиняється саме. Краса 0
+    // (нічого не лягло) — як скаже режим палія.
     const k = st.kView;
     const load = api.kilnLoad ? api.kilnLoad() : 0;
-    const fire = !!api.fireKiln && selfFire(api) && !!k && k.state !== 'cooling' && k.state !== 'burning' && load > 0;
+    const fire = !!api.fireKiln && (beauty > 0 || byHand(k)) && !!k && k.state !== 'cooling' && k.state !== 'burning' && load > 0;
     g.stay = fire;
     const row = g.done.parentElement;
     row.classList.add('clkk-result');
@@ -1951,7 +1993,8 @@
       + '<span class="clkk-rbtns">' + (fire ? '<button type="button" class="primary clkk-rfire">🔥 Обпалити ' + load + '</button>' : '')
       + '<button type="button" class="' + (fire ? 'ghost' : 'primary') + ' clkk-ok">Добре</button></span>';
     row.querySelector('.clkk-ok').onclick = () => api.closeOverlay(st);
-    if (fire) row.querySelector('.clkk-rfire').onclick = () => { g.fired = true; api.closeOverlay(st); api.fireKiln({ bare: true }); };
+    // hand — вид із новою красою міг ще не дійти: палимо самі напевно.
+    if (fire) row.querySelector('.clkk-rfire').onclick = () => { g.fired = true; api.closeOverlay(st); api.fireKiln({ bare: true, hand: beauty > 0 }); };
     g.bar.style.width = '100%';
     // Підсумок вищий за рядок кнопок — полотно трохи меншає, щоб причина й кнопки не сховались під край вікна.
     fitCanvas(st, api, g.svg);
@@ -2125,10 +2168,13 @@
       st.kScene = null;
       st.kSeen = null;
       // Смуга «Шлях виробу» (clicker-craft.js) кличе це на кроці «Розписати».
-      api.startPaint = (s) => pickTech(s || st, api);
-      // Ремесло (fireKiln) питає ними перед обпалом: «партія не розписана», «підмайстер зітре красу».
+      // style — розпис, яким малювати (картка корабля «🎨 Розписати партію «Делфт»», 14.11); без нього — розпис горна.
+      api.startPaint = (s, style) => pickTech(s || st, api, false, style);
+      // Ремесло (fireKiln) питає ними перед обпалом: «партія не розписана».
       api.kilnAsk = (o) => ask(st, api, o);
       api.kilnCanPaint = () => canPaint(st);
+      // Хто палить на «Обпалити» — ремесло («Далі», fireKiln) питає горно, а не пам'ять пристрою (14.11).
+      api.kilnByHand = () => byHand(st.kView);
       mountTab(st, api);
     },
 

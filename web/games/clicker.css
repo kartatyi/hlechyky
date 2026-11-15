@@ -953,7 +953,7 @@
 @media (max-width: 480px), (pointer: coarse) {
   .clk .clk-tabs button, .clk .clk-modes button, .clk .clk-sell button, .clk .clk-shards button, .clk .clk-nxbtn,
   .clk .clk-lookopt, .clk .clk-take, .clk .clk-plain, .clk .clk-fire, .clk .clkw-btns button, .clk .clkw-sellall,
-  .clk .clkw-upbtn, .clk .clkf-obtns > button, .clk .clkf-bid button, .clk .clkk-wbtn, .clk .clkk-replay,
+  .clk .clkw-upbtn, .clk .clkf-obtns > button, .clk .clkf-bid button, .clk .clkk-replay,
   .clk .clka-showoff, .clk .clkg-btns button, .clk .clkg-master, .clk .clkg-potter button, .clk .clkt-chip {
     min-height: 40px;
   }
