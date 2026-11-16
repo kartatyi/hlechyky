@@ -9,10 +9,12 @@ header .vcbtn.on { background: color-mix(in srgb, var(--ok) 28%, var(--panel2));
 header .vcbtn.on.muted { background: color-mix(in srgb, var(--danger) 22%, var(--panel2)); border-color: color-mix(in srgb, var(--danger) 50%, var(--line)); }
 header .vcbtn.talk { box-shadow: 0 0 0 2px var(--ok); }
 
-/* Липкі речі під шапкою стоять на її справжній висоті (voice.js пише --hdr-h): смуга й сцена роблять шапку вищою. */
-.chat { top: calc(var(--hdr-h, 56px) + 16px); height: calc(100vh - var(--hdr-h, 56px) - 44px); }
+/* Липкі речі під шапкою стоять на її справжній висоті (voice.js пише --hdr-h): смуга й сцена роблять шапку вищою.
+   Балачки ще й нижчі на плашки над сторінкою (--bars-h, app.js): нічний відбій і 🚨 тривога зсувають main униз, і
+   колонка — навіть згорнута — вилазила за низ вікна: стіл «в один екран» діставав зайву прокрутку (записка #84). */
+.chat { top: calc(var(--hdr-h, 56px) + 16px); height: calc(100vh - var(--hdr-h, 56px) - 44px - var(--bars-h, 0px)); }
 @media (min-width: 901px) { .libmenu { top: calc(var(--hdr-h, 56px) + 16px); } }
-@media (max-width: 900px) { .chat { top: auto; height: calc(100dvh - var(--hdr-h, 60px) - var(--tabs-h) - var(--mini-h) - 24px); } }
+@media (max-width: 900px) { .chat { top: auto; height: calc(100dvh - var(--hdr-h, 60px) - var(--tabs-h) - var(--mini-h) - 24px - var(--bars-h, 0px)); } }
 
 /* ---------- кружечок людини: аватарка з Лавки + кільце, що дихає голосом ---------- */
 .vc-face { --lv: 0; position: relative; display: inline-grid; place-items: center; flex: none; border-radius: 50%; }

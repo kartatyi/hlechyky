@@ -597,7 +597,11 @@ button.vplay { padding: 3px 8px; }
 .pl-new button { flex: none; }
 
 /* ---- chat ---- */
-.chat { display: flex; flex-direction: column; height: calc(100vh - 100px); min-height: 380px; position: sticky; top: 72px; min-width: 0; }
+/* Висота — вікно мінус шапка й відступи main, а ще мінус плашки над сторінкою (--bars-h, міряє app.js): нічний відбій
+   і 🚨 тривога зсувають main униз, і колонка — навіть згорнута — вилазила за низ вікна. Сторінка столу «в один екран»
+   діставала зайву прокрутку: стіл їхав під шапку, під ним лишалась порожня смуга (записка #84 — 104 px).
+   Справжню висоту шапки підставляє voice.css (--hdr-h) — там те саме правило, міняти обидва разом. */
+.chat { display: flex; flex-direction: column; height: calc(100vh - 100px - var(--bars-h, 0px)); min-height: 380px; position: sticky; top: 72px; min-width: 0; }
 .chat .tabs { margin-bottom: 8px; align-items: center; }
 .chat .chat-close { margin-left: auto; background: transparent; border-color: transparent; color: var(--muted); padding: 4px 7px; }
 .chat .chat-close:hover { background: var(--panel2); color: var(--text); }
@@ -928,7 +932,7 @@ body.clk-big:not(.gfull) main { max-width: calc(1600px * var(--clk-z, 1)); }
   body.gfull main { padding: 10px max(12px, env(safe-area-inset-right)) calc(var(--tabs-h) + var(--mini-h) + 12px) max(12px, env(safe-area-inset-left)); }
   section.panel, aside.panel { padding: 12px; }
   /* dvh: на айфоні 100vh — висота без панелей Safari, і поле вводу балачки ховалось під вкладками. */
-  .chat { height: calc(100vh - 60px - var(--tabs-h) - var(--mini-h) - 24px); height: calc(100dvh - 60px - var(--tabs-h) - var(--mini-h) - 24px); position: static; min-height: 0; }
+  .chat { height: calc(100vh - 60px - var(--tabs-h) - var(--mini-h) - 24px - var(--bars-h, 0px)); height: calc(100dvh - 60px - var(--tabs-h) - var(--mini-h) - 24px - var(--bars-h, 0px)); position: static; min-height: 0; }
   #colChat { display: none; }
   body.route-chat #colChat { display: flex; }
   body.route-chat #colMain { display: none; }
