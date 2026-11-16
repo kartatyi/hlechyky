@@ -3,7 +3,7 @@
   "short_name": "Глечики",
   "description": "Спільне радіо, яке ставлять самі слухачі, балачки й ігри на компанію.",
   "lang": "uk",
-  "start_url": "/#efir",
+  "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "background_color": "#0f1f18",

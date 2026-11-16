@@ -308,7 +308,7 @@ body.chat-collapsed { --rail: 0px; --rail-gap: 0px; }
 @media (prefers-reduced-motion: reduce) { main, #colChat { transition: none; } }
 /* Розділ = один вид у лівій колонці. Перемикає їх лише клас маршруту на body. */
 .view { display: none; flex-direction: column; gap: 18px; min-width: 0; }
-body.route-efir #viewEfir, body.route-lib #viewLib, body.route-games #viewGames,
+body.route-home #viewHome, body.route-efir #viewEfir, body.route-lib #viewLib, body.route-games #viewGames,
 body.route-stats #viewStats, body.route-who #viewWho, body.route-lavka #viewLavka,
 body.route-history #viewHistory { display: flex; animation: fadein .15s ease-out; }
 /* Один рівень карток: секція — панель без рамки, з тонким світлом ізсередини;

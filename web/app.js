@@ -535,8 +535,9 @@
   paintVolIcon();
   let playState = 'idle'; // idle | connecting | live
   /// Кнопка — лише значок (записка #56: «В ефірі · Вирубити» з'їдав назву треку в шапці); слова — у підказці.
-  /// Кнопок дві, стан один: ▶ у капсулі шапки (#playBtn) і велика ▶ у панелі «В ефірі» (.bigplay) — на телефоні саме
-  /// вона головна, бо міні-плеєр на «Ефірі» сховано. Панель перемальовується з кожним треком, тож paintNowInto кличе це знову.
+  /// Кнопок кілька, стан один: ▶ у капсулі шапки (#playBtn) і великі ▶ (.bigplay) у панелі «В ефірі» та на головній —
+  /// на телефоні саме вони головні, бо міні-плеєр там сховано. Панелі перемальовуються з кожним треком, тож
+  /// paintNowInto і головна (web/home.js) кличуть це знову.
   function setPlayUi() {
     const paint = (b, base) => {
       const set = (cls, html, tip) => { b.className = base + cls; b.innerHTML = html; b.title = tip; b.setAttribute('aria-label', tip); };
@@ -545,8 +546,7 @@
       else set('live', '<span class="dot"></span><span class="stop"></span>', 'В ефірі — вирубити звук');
     };
     paint($('playBtn'), '');
-    const big = document.querySelector('#now .bigplay');
-    if (big) paint(big, 'bigplay ');
+    document.querySelectorAll('.bigplay').forEach((big) => paint(big, 'bigplay '));
   }
   // сервер записує, хто слухав кожен трек (вкладка «Рейтинг»); ETS2 і VLC він бачить лише числом у потоці
   let listening = false;
@@ -646,7 +646,7 @@
   }
   const togglePlay = () => { if (playState !== 'idle') stopAudio(); else startAudio(false); };
   $('playBtn').onclick = togglePlay;
-  $('now').addEventListener('click', (e) => { if (e.target.closest('.bigplay')) togglePlay(); });
+  document.addEventListener('click', (e) => { if (e.target.closest('.bigplay')) togglePlay(); });
   audio.addEventListener('playing', () => {
     if (holdNext) { holdNext = false; holdThenPlay(); return; }
     playState = 'live'; setPlayUi(); updateMediaSession(); tellListening(true);
@@ -869,6 +869,7 @@
     const he = $('hdrEl'); // час у капсулі: раз на секунду й лише коли змінився
     if (he) { const s = fmt(elapsed); if (he.textContent !== s) he.textContent = s; }
     paintBars();
+    if (window.HHome) HHome.tick();
     // ETAs in the queue: what is left of the current track plus everything queued before the item
     let acc = nowRemaining();
     document.querySelectorAll('[data-eta]').forEach((s) => {
@@ -1359,6 +1360,7 @@
     renderQueue();
     renderOnline();
     renderSuggestions();
+    if (window.HHome) HHome.update();
     if (album && albumSig() !== album.sig) drawAlbum();   // «у черзі» біля треків альбому
     if (state.now.playId !== lastPlayId) {
       lastPlayId = state.now.playId;
@@ -2004,8 +2006,15 @@
     return el;
   }
 
+  // Останні живі репліки (без Глека, кубиків, столів і журналу) — для картки «Балачки» на головній (web/home.js).
+  const chatTail = [];
   function addMessage(m, scroll = true, live = false) {
     const isLog = m.kind === 'system';
+    if ((!m.kind || m.kind === 'chat') && m.nick && m.text) {
+      chatTail.push({ nick: m.nick, text: m.text });
+      if (chatTail.length > 3) chatTail.shift();
+      if (live && window.HHome) HHome.update();
+    }
     const box = isLog ? $('log') : $('messages');
     const mine = sameNick(m.nick, me.nick);
     // Хто гортає історію вгору, того донизу не тягнемо: стрибок посеред читання гірший за «нове внизу».
@@ -2768,9 +2777,9 @@
   // Кожен екран має адресу: #efir, #lib/<вкладка>, #games(/…), #stats/<вкладка>, #who/<нік>, #chat (вкладка
   // балачок на телефоні), #history (📜 історія сайту, web/history.js), #tryvoga (🚨 мапа тривог, web/tryvoga.js).
   // Хеш — єдине джерело істини: кнопки лише ставлять його, малює applyRoute(), F5 повертає на місце.
-  const ROUTES = ['efir', 'lib', 'games', 'stats', 'who', 'lavka', 'chat', 'history', 'tryvoga', 'gonchar'];
+  const ROUTES = ['home', 'efir', 'lib', 'games', 'stats', 'who', 'lavka', 'chat', 'history', 'tryvoga', 'gonchar'];
   const LIB_TABS = ['history', 'likes', 'playlists', 'bans', 'ads', 'feedback', 'photos', 'mod', 'screen'];
-  const ROUTE_TITLE = { efir: 'Ефір', lib: 'Бібліотека', games: 'Ігри', stats: 'Хто скільки', who: 'Профіль', lavka: 'Лавка', chat: 'Балачки', history: 'Історія', tryvoga: 'Тривога', gonchar: 'Літопис кола' };
+  const ROUTE_TITLE = { home: 'Глечики', efir: 'Ефір', lib: 'Бібліотека', games: 'Ігри', stats: 'Хто скільки', who: 'Профіль', lavka: 'Лавка', chat: 'Балачки', history: 'Історія', tryvoga: 'Тривога', gonchar: 'Літопис кола' };
   const LIB_TITLE = { history: 'Що вже було', likes: 'Улюблене', playlists: 'Плейлисти', bans: 'Бан-лист', ads: 'Реклама', feedback: 'Пропозиції й баги', photos: 'Фото й тла людей', mod: 'Модерація Балачок', screen: 'Екран' };
   // Вкладки зі списком рядків уміють шукати по собі; у плейлистах шукати нічого.
   const LIB_FIND = { history: 'знайти в історії', likes: 'знайти в улюбленому', bans: 'знайти в бан-листі', ads: 'знайти рекламу', feedback: 'знайти в записках', photos: 'знайти за ніком' };
@@ -2850,7 +2859,8 @@
     // Перейшов кудись — починаємо згори: інакше з довгого лобі потрапляєш на стіл уже прогорнутим.
     if (lastHash !== null && lastHash !== location.hash) window.scrollTo(0, 0);
     lastHash = location.hash;
-    let r = ROUTES.includes(head) ? head : 'efir';
+    // Порожня адреса — головна («Зараз у Глечиках»); невідома — як і раніше, Ефір.
+    let r = ROUTES.includes(head) ? head : head ? 'efir' : 'home';
     if (r === 'games' && me.games === false) {
       history.replaceState(null, '', '#efir');
       r = 'efir';
@@ -2885,6 +2895,7 @@
     if (r === 'games') HGames.show(head === 'games' ? tail : ''); else HGames.hide();
     if (r === 'stats' || r === 'who') HPeople.show(r, tail); else HPeople.hide();
     if (r === 'lavka') HLavka.show(tail); else HLavka.hide();
+    if (window.HHome) { if (r === 'home') HHome.show(); else HHome.hide(); }
     if (window.HHistory) { if (r === 'history') HHistory.show(); else HHistory.hide(); }
     if (window.HTryvoga) { if (r === 'tryvoga') HTryvoga.show(); else HTryvoga.hide(); }
     if (window.HGonchar) { if (r === 'gonchar') HGonchar.show(tail); else HGonchar.hide(); }
@@ -4731,6 +4742,7 @@
     // лишався б без кнопки аж до наступної новини з лобі.
     conn.on('rooms', () => paintRoomSlots());
     conn.on('chatHistory', (list) => {
+      chatTail.length = 0;
       for (const id of ['messages', 'log']) { $(id).innerHTML = ''; delete $(id).dataset.done; }
       list.forEach((m) => addMessage(m, false));
       $('messages').scrollTop = $('messages').scrollHeight;
@@ -5023,6 +5035,14 @@
   if (window.HSiteNews) HSiteNews.init({ esc, api, me, go, games: window.HGames });
   // 📜 Історія Глечиків (web/history.js): сторінка #history і версія сайту в «Я»
   if (window.HHistory) HHistory.init({ esc, go });
+  // 🏠 Головна (web/home.js): «Зараз у Глечиках» — усе живе на одній сторінці; дані бере звідси й із HGames
+  if (window.HHome) HHome.init({ esc, go, api, me, fmt, cover, dj, askNick, trackPos,
+    state: () => state, onAir: trackOnAir, chatTail: () => chatTail, paintPlay: setPlayUi,
+    listen: () => { if (playState === 'idle') startAudio(false); },
+    like: () => { const t = state && state.now && state.now.track; if (t) api('POST', `/api/like/${t.id}`).catch(fail); },
+    skip: (b) => busy(b, '', skipNow),
+    openChat: () => { if (isMobile()) go('#chat'); else { setChatOpen(true); $('chatInput').focus(); } } });
+
   // 📈 Літопис кола (web/gonchar.js): сторінка #gonchar — аналітика Гончарного кола
   if (window.HGonchar) HGonchar.init({ esc, go, api, me });
   // 🚨 Тривога (web/tryvoga.js): плашка під шапкою, кнопка 🚨 і сторінка #tryvoga з мапою
