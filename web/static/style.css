@@ -293,7 +293,8 @@ main {
 body.chat-collapsed { --rail: 0px; --rail-gap: 0px; }
 /* Панель не зникає ривком, а з'їжджає разом із колонкою; після анімації йде і з обходу Tab. */
 #colChat { overflow: hidden; transition: padding .2s ease; }
-body.chat-collapsed #colChat { padding: 0; visibility: hidden; transition: padding .2s ease, visibility 0s .2s; }
+/* Лише на широкому: на телефоні балачки — окрема вкладка, і «згорнуто» з широкого екрана (chatOpen=0) лишало її порожньою. */
+@media (min-width: 901px) { body.chat-collapsed #colChat { padding: 0; visibility: hidden; transition: padding .2s ease, visibility 0s .2s; } }
 @media (prefers-reduced-motion: reduce) { main, #colChat { transition: none; } }
 /* Розділ = один вид у лівій колонці. Перемикає їх лише клас маршруту на body. */
 .view { display: none; flex-direction: column; gap: 18px; min-width: 0; }
@@ -965,8 +966,8 @@ body.clk-big:not(.gfull) main { max-width: calc(1600px * var(--clk-z, 1)); }
   /* Списки на телефоні гортаються разом зі сторінкою: друга прокрутка всередині першої лише плутала палець. */
   .libpage .list, .list { max-height: none; overflow: visible; }
   .hellobar { margin-top: 10px; padding: 0 10px; }
-  .hellobar > div { flex-wrap: wrap; gap: 10px; padding: 10px 12px; font-size: .92em; }
-  .hellobar button { width: 100%; justify-content: center; }
+  .hellobar > div { gap: 10px; font-size: .92em; }
+  .hellobar button { justify-content: center; }
   .now .actions .reacts { border-left: 0; padding-left: 0; margin-left: 0; width: 100%; }
 }
 @media (max-width: 480px) {
@@ -1405,7 +1406,8 @@ kbd {
 }
 
 /* ---- лише дивишся (ще не назвався): черепків ще нема, тож і «🏺 —» у шапці ні до чого ---- */
-body.preview header .mechip .wallet { display: none; }
+body.preview header .walletchip { display: none; }
+
 /* У «Тиші» кнопок нема — реакції стоять першими, і розділювач зліва від них зайвий. */
 .now .actions .reacts:first-child { border-left: 0; padding-left: 0; margin-left: 0; }
 /* Довгий нік у «⏱ Час» — з трикрапкою, а не обрізаний посеред літери. */

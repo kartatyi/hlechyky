@@ -48,6 +48,8 @@
 <link rel="stylesheet" href="/static/stats-glek.css">
 <link rel="stylesheet" href="/static/stats-charts.css">
 <link rel="stylesheet" href="/static/stats-news.css">
+<!-- «Полива»: лад у вигляді — спокійні кнопки, меню «Я», перший екран телефона. Останнім: доповнює все вище. -->
+<link rel="stylesheet" href="/static/polyva.css">
 </head>
 <body class="route-efir">
 <header>
@@ -73,25 +75,37 @@
   <span id="listeners" class="chip" title="Скільки людей слухає потік">🎧 0</span>
   <div class="who">
     <span id="liqStatus" class="chip ok" title="Стан ефіру" hidden>ефір</span>
-    <!-- Усе своє — одним чипом: хто я і скільки черепків. Клік веде на сторінку «Я». -->
-    <a id="meBtn" class="mechip" href="#who" title="Твій профіль: черепки, ачівки, акаунт">
-      <span id="meAva" class="ava" aria-hidden="true"></span>
-      <span id="nickBtn" class="nick">…</span>
-      <span id="hdrWallet" class="wallet" title="Черепки">🏺 <b>—</b></span>
-    </a>
-    <!-- 🎁 безкоштовні прокрути в слотах (Slots:Free): видно, поки є невикручені; дотик — в автомат одразу в режимі «безкоштовно» -->
-    <button id="hdrFree" class="hdrfree" type="button" hidden>🎁 <b>0</b></button>
+    <!-- 🚨 Тривога (web/tryvoga.js): мапа тривог і цілей. Поки в моєму районі тривога — це червоний чип із районом і
+         часом (.try-lbl); плашка на всю ширину (#tryBar) стоїть лише першу хвилину тривоги. -->
+    <button id="tryBtn" class="trybtn" type="button" title="Повітряна тривога — мапа" aria-label="Повітряна тривога — мапа"><span class="try-ico">🚨</span><span class="try-dot"></span><span class="try-lbl" hidden></span></button>
+    <!-- Черепки — окремим чипом: число видно завжди, клік веде в профіль до «Черепків». -->
+    <a id="hdrWalletChip" class="walletchip" href="#who" title="Твої черепки"><span id="hdrWallet" class="wallet">🏺 <b>—</b></span></a>
+    <!-- «Я» — аватарка. Клік відкриває меню з рідкісним: профіль, Лавка, 🎁 прокрути, 💡 розробнику, клавіші, історія.
+         Крапка на аватарці (#meDot) — у меню є щось нове: відповідь розробника чи невикручені прокрути. -->
+    <div class="mewrap">
+      <a id="meBtn" class="mechip" href="#who" title="Твій профіль: черепки, ачівки, акаунт" aria-haspopup="menu" aria-expanded="false">
+        <span id="meAva" class="ava" aria-hidden="true"></span>
+        <span id="nickBtn" class="nick">…</span>
+        <span id="meDot" class="medot" hidden></span>
+      </a>
+      <div id="meMenu" class="memenu" role="menu" hidden>
+        <a id="mmMe" class="mm-me" href="#who" role="menuitem"><span class="mm-ico">👤</span><span class="mm-t"><b id="mmNick">Мій профіль</b><small>профіль, ачівки, акаунт</small></span></a>
+        <a href="#lavka" role="menuitem"><span class="mm-ico">🛍</span><span class="mm-t">Лавка Дядька Глека</span></a>
+        <!-- 🎁 безкоштовні прокрути в слотах (Slots:Free): видно, поки є невикручені; дотик — в автомат одразу в режимі «безкоштовно» -->
+        <button id="hdrFree" class="hdrfree" type="button" role="menuitem" hidden><span class="mm-ico">🎁</span><span class="mm-t">Безкоштовні прокрути</span><b>0</b></button>
+        <!-- «💡 Розробнику»: пропозиції й баги. Бейдж — скільки записок чекає (адміну) або в скількох своїх записках нова відповідь розробника (решті). -->
+        <button id="fbBtn" class="fbbtn" type="button" role="menuitem" title="Пропозиції й баги — розробнику. За баг чи зроблену ідею — 5000 черепків від Дядька Глека" aria-label="Написати розробнику"><span class="mm-ico">💡</span><span class="mm-t">Написати розробнику</span><span id="fbBadge" class="chip badge" hidden>0</span></button>
+        <button id="mmKeys" type="button" role="menuitem"><span class="mm-ico">⌨</span><span class="mm-t">Клавіші й підказки</span></button>
+        <a href="#history" role="menuitem"><span class="mm-ico">📜</span><span class="mm-t">Історія Глечиків</span></a>
+      </div>
+    </div>
     <!-- Лоток значків — одна рамка, як у розділів і капсули музики; кнопки в ньому однакові 32×32. -->
     <div class="tools">
     <button id="padTip" class="icon padtip" type="button" title="Як грати джойстиком" aria-label="Як грати джойстиком" hidden>🎮</button>
     <!-- ⏭ у шапці — лише на телефоні за столом і в балачках, де міні-плеєр унизу сховано (style.css, renderNow). -->
     <button id="hdrSkip" class="icon hdrskip" type="button" title="Перемкнути на наступний трек" aria-label="Скіп — наступний трек" hidden>⏭</button>
-    <!-- 🚨 Тривога (web/tryvoga.js): мапа тривог і цілей; під час тривоги в моєму районі — крапка кольором рівня. -->
-    <button id="tryBtn" class="icon trybtn" type="button" title="Повітряна тривога — мапа" aria-label="Повітряна тривога — мапа"><span class="try-ico">🚨</span><span class="try-dot"></span></button>
     <!-- 🎙 Посиденьки: голосовий чат (web/voice.js). Бейдж — скільки людей зараз у голосі; панель — по кліку. -->
     <button id="vcBtn" class="icon vcbtn" type="button" title="Посиденьки — голосовий чат" aria-label="Посиденьки — голосовий чат" aria-expanded="false"><span class="vc-ico">🎙</span><span class="vc-n chip badge" hidden>0</span></button>
-    <!-- «💡 Розробнику»: пропозиції й баги. Бейдж — скільки записок чекає (адміну) або в скількох своїх записках нова відповідь розробника (решті). -->
-    <button id="fbBtn" class="icon fbbtn" type="button" title="Пропозиції й баги — розробнику. За баг чи зроблену ідею — 5000 черепків від Дядька Глека" aria-label="Написати розробнику">💡<span id="fbBadge" class="chip badge" hidden>0</span></button>
     <button id="chatToggle" class="icon chat-toggle" title="Балачки — клавіша ]" aria-label="Показати чи сховати балачки">💬<span id="hdrChatBadge" class="chip badge" hidden>0</span></button>
     </div>
   </div>
@@ -106,8 +120,9 @@
 <!-- Хто ще не назвався, бачить сайт одразу — лише подивитись; а тут одна кнопка, щоб долучитись. -->
 <div id="hello" class="hellobar" role="status" hidden><div>
   <img src="/static/glek.svg" alt="">
-  <span class="hb-text"><b>Здоров, ти тут уперше?</b> Тут слухають радіо, яке ставлять самі, тяпають у балачках і граються за столами. Назвись — і долучайся.</span>
-  <button id="helloGo" class="primary" type="button">Назватись</button>
+  <!-- На телефоні — один рядок (.hb-short): повний текст із Глеком з'їдав третину першого екрана. -->
+  <span class="hb-text"><span class="hb-long"><b>Здоров, ти тут уперше?</b> Тут слухають радіо, яке ставлять самі, тяпають у балачках і граються за столами. Назвись — і долучайся.</span><span class="hb-short">Радіо, яке ставлять самі слухачі</span></span>
+  <button id="helloGo" class="tonal" type="button">Назватись</button>
 </div></div>
 
 <main>
@@ -128,7 +143,7 @@
           <div class="qbox">
             <div class="row">
               <input id="q" type="search" placeholder="Що врубаємо? Назва, виконавець або посилання (YouTube, YT Music, Spotify)" autocomplete="off">
-              <button id="addBtn" class="primary">Закинути</button>
+              <button id="addBtn" class="tonal">Закинути</button>
               <button id="micBtn" class="icon" title="Записати голосове в ефір">🎙</button>
             </div>
             <div id="results" class="results"></div>

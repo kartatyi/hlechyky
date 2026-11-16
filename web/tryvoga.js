@@ -19,6 +19,7 @@
   const MAP_URL = '/static/tryvoga-map.json';
   const REGION_KEY = 'tryvogaRegion';
   const HIDE_KEY = 'tryvogaHidden';
+  const BAR_MS = 60000;   // скільки від початку тривоги стоїть плашка на всю ширину; далі — лише чип у шапці
   const TAB_KEY = 'tryvogaTab';      // вкладка у вузькій колонці: map | near
   const THREATS_MS = 10000;
   const KMAX = 14;
@@ -205,7 +206,11 @@
     const stale = !off && data.stale;
     // Дані застаріли, а востаннє була тривога — кажемо «не знаю», а не мовчки ховаємо плашку.
     // На самій сторінці мапи плашка не потрібна: те саме каже картка статусу згори, а «Мапа» вела б сюди ж.
-    const show = !off && s.on && !hidden(s) && !shown;
+    // Плашка на всю ширину — лише першу хвилину тривоги (і поки дані застарілі: там довге пояснення). Далі тривогу
+    // тримає червоний чип у шапці (paintBtn): плашка годинами з'їдала на телефоні чверть першого екрана.
+    const since0 = Date.parse(s.since || '');
+    const fresh = stale || !since0 || Date.now() - since0 < BAR_MS;
+    const show = !off && s.on && !hidden(s) && !shown && fresh;
     bar.hidden = !show;
     if (!show) return;
     bar.classList.toggle('lvl-red', !stale && s.level === 'red');
@@ -231,6 +236,18 @@
     b.classList.toggle('yellow', !stale && s.on && s.level === 'yellow');
     b.classList.toggle('stale', !!stale);
     const name = cur().name;
+    // Чип: район і скільки вже триває. На вузькому екрані район ховається (style: .try-name) — лишається час.
+    const lbl = b.querySelector('.try-lbl');
+    if (lbl) {
+      const on = !stale && s.on;
+      const since = Date.parse(s.since || '');
+      lbl.hidden = !on;
+      // На телефоні в шапці тісно: район ховається, а «1 год 3 хв» стає «1:03» (.try-long / .try-short у polyva.css).
+      const ms = since ? Date.now() - since : 0, m = Math.floor(ms / 60000);
+      const short = m < 60 ? m + ' хв' : m < 1440 ? Math.floor(m / 60) + ':' + String(m % 60).padStart(2, '0') : lasts(ms);
+      if (on) lbl.innerHTML = `<span class="try-name">${esc(name)}${since ? ' · ' : ''}</span>`
+        + (since ? `<span class="try-long">${lasts(ms)}</span><span class="try-short">${short}</span>` : '');
+    }
     b.title = stale ? 'Повітряна тривога: дані застаріли — мапа'
       : s.on ? `Повітряна тривога — ${name}${what(s.level, s.reasons) ? ': ' + what(s.level, s.reasons) : ''}. Мапа`
         : `${name}: тихо. Мапа тривог і того, що в небі`;
@@ -1624,7 +1641,7 @@
     // «12 хв» на плашці має рости, а хаб може й мовчати (перепідключення) — раз на хвилину перепитуємо самі
     setInterval(() => {
       if (document.hidden) return;
-      if (Date.now() - lastRefresh > 60000) refresh(); else paintBar();
+      if (Date.now() - lastRefresh > 60000) refresh(); else { paintBar(); paintBtn(); }
       if (shown) paintPage();
     }, 30000);
     document.addEventListener('visibilitychange', () => {

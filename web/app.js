@@ -329,8 +329,14 @@
     b.classList.toggle('guest', !me.account);
     b.href = me.nick ? '#who/' + encodeURIComponent(me.nick) : '#who';
     b.title = !me.nick ? 'Назватись, щоб тяпати й грати'
-      : me.account ? 'Твій профіль: черепки, ачівки, акаунт' : 'Твій профіль. Гість — зареєструй нік, щоб він був лише твій';
+      : me.account ? 'Твоє меню: профіль, Лавка, записки розробнику' : 'Твоє меню. Гість — зареєструй нік, щоб він був лише твій';
+    b.classList.toggle('nonick', !me.nick);
+    $('mmMe').href = b.href;
+    $('mmNick').textContent = me.nick || 'Мій профіль';
+    $('hdrWalletChip').href = b.href;
   }
+  /// Крапка на аватарці: у меню «Я» щось чекає — відповідь у записках (💡) чи невикручені прокрути (🎁).
+  function paintMeDot() { $('meDot').hidden = $('fbBadge').hidden && $('hdrFree').hidden; }
   function showNickError(text) { $('nickErr').textContent = text; $('nickErr').hidden = false; }
   async function saveNick() {
     const n = $('nickInput').value.trim().slice(0, 24);
@@ -394,8 +400,21 @@
   $('nickPass').onclick = () => askNick(true, 'password');
   $('nickAll').onclick = () => askNick(true, 'everywhere');
   $('nickLater').onclick = () => { $('nickModal').hidden = true; };
-  // Без ніка профільний чип — це «назватись», а не сторінка порожнього профілю.
-  $('meBtn').addEventListener('click', (e) => { if (!me.nick) { e.preventDefault(); askNick(true); } });
+  // Без ніка профільний чип — це «назватись», а не сторінка порожнього профілю. З ніком клік по аватарці відкриває меню
+  // «Я»: профіль і те рідкісне, що раніше стояло значками в шапці (🎁, 💡). Посилання лишається справжнім — середня
+  // кнопка й Ctrl+клік ведуть у профіль, як і було.
+  const meMenu = $('meMenu');
+  const setMeMenu = (on) => { meMenu.hidden = !on; $('meBtn').setAttribute('aria-expanded', String(on)); };
+  $('meBtn').addEventListener('click', (e) => {
+    if (e.ctrlKey || e.metaKey || e.shiftKey || e.button) return;
+    e.preventDefault();
+    if (!me.nick) { askNick(true); return; }
+    setMeMenu(meMenu.hidden);
+  });
+  meMenu.addEventListener('click', (e) => { if (e.target.closest('a, button')) setMeMenu(false); });
+  document.addEventListener('click', (e) => { if (!meMenu.hidden && !e.target.closest('.mewrap')) setMeMenu(false); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !meMenu.hidden) { setMeMenu(false); $('meBtn').focus(); } });
+  $('mmKeys').onclick = () => showKeys();
 
   // ---------- вхід через Google ----------
   // Бібліотеку Google тягнемо лише коли сервер дав Client ID; вона сама малює кнопку в наш контейнер
@@ -516,12 +535,18 @@
   paintVolIcon();
   let playState = 'idle'; // idle | connecting | live
   /// Кнопка — лише значок (записка #56: «В ефірі · Вирубити» з'їдав назву треку в шапці); слова — у підказці.
+  /// Кнопок дві, стан один: ▶ у капсулі шапки (#playBtn) і велика ▶ у панелі «В ефірі» (.bigplay) — на телефоні саме
+  /// вона головна, бо міні-плеєр на «Ефірі» сховано. Панель перемальовується з кожним треком, тож paintNowInto кличе це знову.
   function setPlayUi() {
-    const b = $('playBtn');
-    const set = (cls, html, tip) => { b.className = cls; b.innerHTML = html; b.title = tip; b.setAttribute('aria-label', tip); };
-    if (playState === 'idle') set('primary', ICON.play, 'Врубити ефір — слухати прямо тут');
-    else if (playState === 'connecting') set('primary busy', '<span class="spin"></span>', 'Врубаю…');
-    else set('live', '<span class="dot"></span><span class="stop"></span>', 'В ефірі — вирубити звук');
+    const paint = (b, base) => {
+      const set = (cls, html, tip) => { b.className = base + cls; b.innerHTML = html; b.title = tip; b.setAttribute('aria-label', tip); };
+      if (playState === 'idle') set('primary', ICON.play, 'Врубити ефір — слухати прямо тут');
+      else if (playState === 'connecting') set('primary busy', '<span class="spin"></span>', 'Врубаю…');
+      else set('live', '<span class="dot"></span><span class="stop"></span>', 'В ефірі — вирубити звук');
+    };
+    paint($('playBtn'), '');
+    const big = document.querySelector('#now .bigplay');
+    if (big) paint(big, 'bigplay ');
   }
   // сервер записує, хто слухав кожен трек (вкладка «Рейтинг»); ETS2 і VLC він бачить лише числом у потоці
   let listening = false;
@@ -619,7 +644,9 @@
     setPlayUi();
     connectStream(auto);
   }
-  $('playBtn').onclick = () => { if (playState !== 'idle') stopAudio(); else startAudio(false); };
+  const togglePlay = () => { if (playState !== 'idle') stopAudio(); else startAudio(false); };
+  $('playBtn').onclick = togglePlay;
+  $('now').addEventListener('click', (e) => { if (e.target.closest('.bigplay')) togglePlay(); });
   audio.addEventListener('playing', () => {
     if (holdNext) { holdNext = false; holdThenPlay(); return; }
     playState = 'live'; setPlayUi(); updateMediaSession(); tellListening(true);
@@ -714,9 +741,9 @@
           <div class="title">${esc(title)}</div>
           <div class="artist"><span class="art">${esc(sub)}</span></div>
           <div class="why">закинь щось або зачекай</div>
-          <div class="actions"><span class="reacts">${reactsHtml()}</span>${fwHtml()}</div>
+          <div class="actions"><button class="bigplay" type="button"></button><span class="reacts">${reactsHtml()}</span>${fwHtml()}</div>
         </div>`;
-      if (!mini) wireReacts(box);
+      if (!mini) { wireReacts(box); setPlayUi(); }
       return;
     }
     const t = n.track || {};
@@ -754,15 +781,18 @@
         <div class="progline"><span id="tElapsed">0:00</span><div class="progress ${pending ? 'pending' : ''}"><div id="bar"></div></div><span>${fmt(n.durationSec)}</span></div>
         ${pending ? `<div class="pending-note"><span class="spin"></span> Перемикаю, в ефірі зміниться за кілька секунд</div>` : ''}
         <div class="actions">
-          ${like}${skip}
+          ${like}
           <button data-act="pl" title="Зберегти в плейлист">📂＋</button>
+          <button class="bigplay" type="button"></button>
+          ${skip}
           ${t.sourceUrl ? `<a class="chip src" href="${esc(t.sourceUrl)}" target="_blank" rel="noopener" title="${isVoice(t) ? 'Послухати голосове' : 'Відкрити джерело'}">↗</a>` : ''}
-          ${canBan ? `<button data-act="ban" class="danger ghost" title="${banPrice ? `Забанити назавжди за ${banPrice} черепків: трек скіпнеться і більше не заграє` : 'Забанити трек і скіпнути'}">🚫${banPrice ? ` ${banPrice} 🏺` : ' бан'}</button>` : ''}
+          ${canBan ? `<button data-act="ban" class="danger ghost" title="${banPrice ? `Забанити назавжди за ${banPrice} черепків: трек скіпнеться і більше не заграє` : 'Забанити трек і скіпнути'}">🚫<span class="lbl">${banPrice ? ` ${banPrice} 🏺` : ' бан'}</span></button>` : ''}
           <span class="reacts" title="Реакція — полетить над обкладинкою в усіх">${reactsHtml()}</span>${fwHtml()}
         </div>
       </div>`;
     wireNow(box, t, o);
     wireReacts(box);
+    setPlayUi();
   }
 
   function renderNow() {
@@ -1096,7 +1126,7 @@
       ul.innerHTML = `<li class="empty queue-empty">
         <img src="/static/glek.svg" alt="">
         <div>Порожньо. Закинь щось, або хай ${esc(dj())} крутить своє.
-        ${sug0 ? `<div class="qe-btn"><button id="qTakeSug" class="primary" title="${esc(`${sug0.track.artist} — ${sug0.track.title}`)}">👍 Закинути перше з порад ${esc(djGen())}</button></div>` : ''}</div>
+        ${sug0 ? `<div class="qe-btn"><button id="qTakeSug" class="tonal" title="${esc(`Закинути перше з порад ${djGen()}: ${sug0.track.artist} — ${sug0.track.title}`)}">👍 Взяти першу пораду</button></div>` : ''}</div>
       </li>`;
       if (sug0) $('qTakeSug').onclick = (e) => busy(e.currentTarget, 'закидаю…', () => api('POST', `/api/suggest/${sug0.itemId}/add`).then(ok).catch(fail));
     } else {
@@ -1255,8 +1285,8 @@
             : (s.reason && !onAir ? `<div class="r">${esc(s.reason)}</div>` : '')}
         </div>
         <div class="btns">
-          ${next ? statusChip(s) : '<button class="primary add" title="Закинути в чергу">👍 Беру</button>'}
-          <button class="skip" title="${next ? 'Хай поставить щось інше' : 'Прибрати, хай запропонує інше'}">👎${next ? ' Не те' : ''}</button>
+          ${next ? statusChip(s) : '<button class="tonal add" title="Закинути в чергу">👍 Беру</button>'}
+          <button class="skip" title="${next ? 'Хай поставить щось інше' : 'Прибрати, хай запропонує інше'}">👎${next ? '<span class="lbl"> Не те</span>' : ''}</button>
         </div>
       </div>`;
     const cards = (a ? [card(a, true)] : []).concat(list.map((s) => card(s, false)));
@@ -2755,7 +2785,8 @@
     b.hidden = !(n > 0) || me.games === false;
     b.querySelector('b').textContent = String(n || 0);
     b.title = n > 0 ? 'Безкоштовні прокрути в слотах: ' + n + ' з ' + f.total + ' по ' + f.bet + ' черепків — згорають опівночі' : '';
-    const m = $('mNavGift');   // на телефоні — бейдж на вкладці «Ігри» замість значка в шапці
+    paintMeDot();
+    const m = $('mNavGift');   // на телефоні — ще й бейдж на вкладці «Ігри»
     m.hidden = b.hidden;
     m.textContent = '🎁' + (n || '');
   }
@@ -2913,6 +2944,12 @@
 
   // ---------- search / add ----------
   const q = $('q'), results = $('results');
+  // На телефоні довга підказка в полі обрізалась на пів слові («Що врубаємо? Назв») — там лишаємо саме питання.
+  const qNarrow = window.matchMedia('(max-width: 560px)');
+  const qHint = q.placeholder;
+  const paintQHint = () => { q.placeholder = qNarrow.matches ? 'Що врубаємо?' : qHint; };
+  qNarrow.addEventListener?.('change', paintQHint);
+  paintQHint();
   let lastResults = [];
   let sel = -1;
   function showResults(list, hint, wait) {
@@ -3323,6 +3360,7 @@
     $('fbBadge').hidden = !n;
     $('fbBadge').textContent = n > 99 ? '99+' : String(n);
     $('fbBtn').title = n ? `Розробник відповів у записках: ${n}` : 'Пропозиції й баги — розробнику. За баг чи зроблену ідею — 5000 черепків від Дядька Глека';
+    paintMeDot();
   }
   // Свої записки справді видно: вікно відкрите, «Мої записки» розгорнуті, вкладка браузера спереду.
   const fbMineVisible = () => !$('fbModal').hidden && $('fbMine').open && !document.hidden;
@@ -3443,6 +3481,7 @@
     const n = w.count || 0;
     for (const id of ['fbBadge', 'fbTabBadge']) { $(id).hidden = !n; $(id).textContent = n; }
     $('fbBtn').title = n ? `Чекає записок: ${n}` + (w.replies ? ` (відповіли: ${w.replies})` : '') : 'Пропозиції й баги — розробнику';
+    paintMeDot();
   }
   async function loadFeedbackCount() {
     if (me.role !== 'admin') return;
