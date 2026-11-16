@@ -3173,7 +3173,7 @@
     if (!f || !f.person || !(f.left > 0) || me.slots === false) return '';
     return '<div class="gdc tour gift"><span class="gemo">🎁</span><div><b>Безкоштовні прокрути</b><span class="muted small">'
       + f.left + ' з ' + f.total + ' по ' + f.bet + ' 🏺 · згорають опівночі</span></div>'
-      + '<button class="primary" data-gift="1">Крутити</button></div>';
+      + '<button class="tonal" data-gift="1">Крутити</button></div>';
   }
   /// Нічні виплати за вчорашні щоденні: рядок у «Сьогодні» на весь день і тост раз на день (уночі всі сплять — інакше
   /// ніхто й не помітить, що Глек заплатив).
@@ -3276,7 +3276,7 @@
     const stage = { gathering: 'збираємось', playing: 'іде гра ' + ((s.index || 0) + 1) + ' з ' + (s.games || []).length, between: 'перерва між іграми', done: 'дограли' }[s.stage] || '';
     return '<div class="gdc tour"><span class="gemo">👑</span><div><b>Турнір</b><span class="muted small">' + esc(stage)
       + ((s.players || []).length ? ' · ' + (s.players || []).length + ' у грі' : '') + '</span></div>'
-      + '<button class="primary" data-go="#games/x:tournament">Відкрити</button></div>';
+      + '<button class="tonal" data-go="#games/x:tournament">Відкрити</button></div>';
   }
   // «🍳 Падельня» поруч із турніром: живі матчі з рахунком, живий турнір, найближчий збір. Дані — /api/padel/lobby
   // (раз на рендер лобі, не частіше ніж раз на 20 с) і подія головного хаба padelLive (app.js → HGames.padel).
@@ -3307,7 +3307,7 @@
       .concat(next ? ['📅 ' + padelWhen(next.local) + ' · ' + next.going + '/' + next.slots + (next.place ? ' · ' + next.place : '')] : []);
     return '<div class="gdc tour"><span class="gemo">🍳</span><div><b>Падельня</b>'
       + lines.map((l) => '<span class="muted small" title="' + esc(l) + '">' + esc(l) + '</span>').join('')
-      + '</div><button class="primary" data-go="#padel">Відкрити</button></div>';
+      + '</div><button class="tonal" data-go="#padel">Відкрити</button></div>';
   }
   /// «Цеглини дня» → «Цеглини»: у «Сьогодні» і так ясно, що дня.
   const dayTitle = (p) => String(p.title || titleOf(p.game)).replace(/\s+дня$/i, '');
