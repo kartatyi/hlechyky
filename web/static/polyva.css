@@ -11,13 +11,13 @@ button.tonal:hover { background: #335a47; }
 /* Тихо — сіренький значок у власній рамці. Тривога в моєму районі — червоний (дрони — жовтий) чип із районом і часом. */
 header .trybtn {
   flex: none; height: var(--hc); min-width: var(--hc); padding: 0 9px; gap: 6px; justify-content: center;
-  border: 1px solid var(--line); border-radius: var(--hr); background: var(--bg2); color: var(--muted); font-size: 1em;
+  border: 1px solid var(--line); border-radius: var(--hr); background: var(--bg2); color: var(--muted); font-size: var(--t-m);
 }
 header .trybtn.on { padding: 0 12px 0 9px; background: #5a1d1b; border-color: #8a2e2a; color: #ffd9d4; }
 header .trybtn.on:hover { background: #6b2320; }
 header .trybtn.on.yellow { background: #4a3a06; border-color: var(--accent2); color: #ffe7a8; }
 header .trybtn.on .try-dot { display: none; }
-header .trybtn .try-lbl { font-size: .86em; font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
+header .trybtn .try-lbl { font-size: var(--t-s); font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
 header .trybtn .try-short { display: none; }
 
 /* ---- шапка: черепки й «я» ---- */
@@ -26,7 +26,7 @@ header .walletchip {
   border: 1px solid var(--line); border-radius: var(--hr); background: var(--bg2);
 }
 header .walletchip:hover { background: var(--panel2); }
-header .walletchip .wallet { color: var(--accent); font-size: .9em; font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
+header .walletchip .wallet { color: var(--accent); font-size: var(--t-s); font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
 /* лише дивишся (ще не назвався): черепків ще нема */
 body.preview header .walletchip { display: none; }
 .mewrap { position: relative; flex: none; }
@@ -50,7 +50,7 @@ header .memenu > a:hover, header .memenu > button:hover { background: var(--pane
 .memenu .mm-ico { flex: none; width: 22px; text-align: center; }
 .memenu .mm-t { flex: 1; min-width: 0; display: grid; line-height: 1.25; }
 .memenu .mm-t b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.memenu .mm-t small { color: var(--muted); font-size: .8em; }
+.memenu .mm-t small { color: var(--muted); font-size: var(--t-s); }
 header .memenu > .mm-me { margin-bottom: 4px; padding-bottom: 9px; border-bottom: 1px solid var(--line); border-radius: 9px 9px 0 0; }
 header .memenu .hdrfree > b { color: #bff0c9; font-variant-numeric: tabular-nums; }
 header .memenu .badge { position: static; }
@@ -99,13 +99,13 @@ header .memenu .badge { position: static; }
   .now .nowinfo { display: contents; }
   .now .coverwrap { grid-column: 1; grid-row: 1 / span 3; align-self: start; }
   .now .title, .now .artist, .now .why { grid-column: 2; }
-  .now .title { font-size: 1.3em; }
+  .now .title { font-size: var(--t-xl); }
   .now .progline, .now .pending-note, .now .actions { grid-column: 1 / -1; }
   .now .progline { margin-top: 14px; }
   .now .actions { margin-top: 12px; gap: 6px; justify-content: space-between; }
   .now .actions > button:not(.bigplay) { min-width: 48px; height: 44px; padding: 0 10px; justify-content: center; }
   .now .actions .reacts { order: 9; width: 100%; margin: 2px 0 0; padding: 8px 0 0; border-top: 1px solid var(--line); border-left: 0; }
-  .now .actions .reacts button { width: 40px; height: 44px; padding: 0; justify-content: center; font-size: 1.25em; }
+  .now .actions .reacts button { width: 40px; height: 44px; padding: 0; justify-content: center; font-size: var(--t-xl); }
   /* Поради й порожня черга: назва у два рядки замість «Sweet Home Alaba…», пояснення переноситься, кнопки — 40 px. */
   .sug { grid-template-columns: 48px minmax(0, 1fr) auto; }
   .sug .t { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; line-height: 1.2; }

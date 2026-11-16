@@ -87,8 +87,8 @@
 }
 /* картка «🏺 Черепки» в профілі: ➕ Купити / 💸 Продати / 📋 Заявки — великим рядом під балансом */
 .wc-trade { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 2px; }
-.wc-trade button { flex: 1 1 150px; justify-content: center; min-height: 46px; padding: 10px 14px; font-size: 1.02em; font-weight: 600; }
-.wc-trade .chip.badge { font-size: .8em; min-width: 20px; }
+.wc-trade button { flex: 1 1 150px; justify-content: center; min-height: 46px; padding: 10px 14px; font-size: var(--t-m); font-weight: 600; }
+.wc-trade .chip.badge { font-size: var(--t-s); min-width: 20px; }
 
 /* адмін: нарахувати / списати черепки в чужому профілі (people.js, wireAdjust) */
 .wc-adj { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 2px; }

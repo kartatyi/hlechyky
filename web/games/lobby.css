@@ -65,15 +65,15 @@
 .gb-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
 .gb-tl { position: absolute; left: 7px; top: 7px; display: flex; gap: 4px; }
 .gb-tl .gnew { margin: 0; box-shadow: 0 2px 6px rgba(0, 0, 0, .35); }
-.gb-tl .gupd { margin: 0; padding: 2px 7px; border-radius: 999px; background: rgba(15, 31, 24, .78); color: #f3b47f; font-size: .7em; }
+.gb-tl .gupd { margin: 0; padding: 2px 7px; border-radius: 999px; background: rgba(15, 31, 24, .78); color: #f3b47f; font-size: var(--t-xs); }
 .gb-live {
   position: absolute; left: 7px; bottom: 9px; display: inline-flex; align-items: center; gap: 5px; max-width: calc(100% - 14px);
-  padding: 2px 8px; border-radius: 999px; background: rgba(15, 31, 24, .82); color: var(--ok); font-size: .74em;
+  padding: 2px 8px; border-radius: 999px; background: rgba(15, 31, 24, .82); color: var(--ok); font-size: var(--t-xs);
 }
 .gb-live b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gb .gstar {
   position: absolute; right: 6px; top: 6px; margin: 0; width: 28px; height: 28px; padding: 0; justify-content: center;
-  border-radius: 50%; background: rgba(15, 31, 24, .55); color: #e8eee6; font-size: 1em;
+  border-radius: 50%; background: rgba(15, 31, 24, .55); color: #e8eee6; font-size: var(--t-m);
 }
 .gb .gstar.on { color: var(--accent); background: rgba(15, 31, 24, .78); }
 /* ☆ видно завжди (записка #80): на ПК вона ховалась, доки не наведеш мишку на плитку, — з картинками її перестали
@@ -100,18 +100,18 @@
 .gt-body { display: flex; flex-direction: column; gap: 3px; padding: 9px 11px 0; min-width: 0; flex: 1; }
 /* назва — до двох рядків, без «…» посеред слова («Сорочинський ярмарок»); ряд сітки однаковий за висотою сам */
 .gt-name {
-  font-family: var(--display); font-weight: 700; font-size: 1.02em; line-height: 1.25; overflow-wrap: anywhere;
+  font-family: var(--display); font-weight: 700; font-size: var(--t-m); line-height: 1.25; overflow-wrap: anywhere;
   display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
-.gt-hint { color: var(--muted); font-size: .84em; line-height: 1.3; height: 2.6em; overflow: hidden; }
+.gt-hint { color: var(--muted); font-size: var(--t-s); line-height: 1.3; height: 2.6em; overflow: hidden; }
 .gt-hint > span { display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .gt-sub {
-  min-height: 1.35em; font-size: .76em; line-height: 1.35; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  min-height: 1.35em; font-size: var(--t-xs); line-height: 1.35; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   color: color-mix(in srgb, var(--cc) 40%, var(--text) 45%);
 }
 .gt-foot { display: flex; align-items: center; gap: 6px; padding: 8px 11px 11px; min-width: 0; }
-.gt-pl { margin-right: auto; min-width: 0; color: var(--muted); font-size: .8em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.gt-foot button { flex: none; padding: 5px 12px; font-size: .88em; }
+.gt-pl { margin-right: auto; min-width: 0; color: var(--muted); font-size: var(--t-s); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gt-foot button { flex: none; padding: 5px 12px; font-size: var(--t-s); }
 .gt-foot .gt-extra { padding: 5px 7px; }
 @media (prefers-reduced-motion: reduce) { .gtile, .gtile:hover { transition: none; transform: none; } }
 
@@ -119,14 +119,14 @@
 .gl-cat { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .gcatg { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .gcatg + .gcatg { margin-top: 14px; }
-.ggroup { margin: 0; display: flex; align-items: center; gap: 9px; font-size: 1.12em; }
+.ggroup { margin: 0; display: flex; align-items: center; gap: 9px; font-size: var(--t-l); }
 .ggroup[class*='cat-'] {
   padding: 8px 12px; border-radius: 12px; border-left: 4px solid var(--cc);
   background: linear-gradient(90deg, color-mix(in srgb, var(--cc) 30%, transparent), transparent 75%);
 }
-.gg-i { font-size: 1.05em; line-height: 1; }
-.gg-n { font-family: var(--font, inherit); font-size: .72em; font-weight: 500; color: var(--muted); }
-.gcatg .gtheme { color: color-mix(in srgb, var(--cc) 35%, var(--text) 60%); font-size: .84em; margin: 2px 0 -2px; }
+.gg-i { font-size: var(--t-l); line-height: 1; }
+.gg-n { font-family: var(--font, inherit); font-size: var(--t-xs); font-weight: 500; color: var(--muted); }
+.gcatg .gtheme { color: color-mix(in srgb, var(--cc) 35%, var(--text) 60%); font-size: var(--t-s); margin: 2px 0 -2px; }
 .gthemes[class*='cat-'] .gtchip.on { border-color: color-mix(in srgb, var(--cc) 70%, transparent); background: color-mix(in srgb, var(--cc) 22%, var(--panel2)); }
 /* Теми розділу на широкому — блоки в сітці з колонками плитки: тема на 1–3 плитки стає поруч із сусідньою, а не займає
    цілий ряд. Блок тягнеться на min(плиток, колонок), плитки всередині — у колонках батька (subgrid). Пороги — для
@@ -161,10 +161,10 @@
 .gl-fi svg { width: 18px; height: 18px; fill: none; stroke: var(--muted); stroke-width: 1.8; stroke-linecap: round; }
 .gl-find .gfind {
   flex: 1; min-width: 0; width: auto; height: 100%; margin: 0; padding: 0; border: 0; border-radius: 0; outline: none;
-  background: transparent; box-shadow: none; font: inherit; font-size: 1.02em; color: var(--text);
+  background: transparent; box-shadow: none; font: inherit; font-size: var(--t-m); color: var(--text);
 }
 .gl-find .gfind::placeholder { color: var(--muted); opacity: .8; }
-.gl-kbd { flex: none; font: inherit; font-size: .74em; color: var(--muted); border: 1px solid var(--line); border-radius: 6px; padding: 0 6px; line-height: 1.5; }
+.gl-kbd { flex: none; font: inherit; font-size: var(--t-xs); color: var(--muted); border: 1px solid var(--line); border-radius: 6px; padding: 0 6px; line-height: 1.5; }
 .gl-bar.searching .gl-kbd, .gl-find:focus-within .gl-kbd { display: none; }
 @media (hover: none) { .gl-kbd { display: none; } }
 .gl-tools { display: inline-flex; gap: 6px; align-items: center; flex: none; }
@@ -174,7 +174,7 @@
 .gl-tool.act { color: var(--accent); }
 .gl-badge {
   position: absolute; top: -5px; right: -5px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px;
-  display: grid; place-items: center; font-size: .7em; font-weight: 700; background: var(--accent); color: var(--accent-ink);
+  display: grid; place-items: center; font-size: var(--t-xs); font-weight: 700; background: var(--accent); color: var(--accent-ink);
 }
 .gl-tools .gviewsw { height: 44px; border-radius: 12px; }
 .gl-tools .gviewsw button { padding: 0 12px; height: 100%; }
@@ -185,10 +185,10 @@
 .gl-tabs::-webkit-scrollbar { display: none; }
 .gl-tab {
   flex: none; gap: 6px; padding: 7px 13px; border-radius: 999px; background: transparent; border: 1px solid var(--line);
-  color: var(--muted); font-size: .92em;
+  color: var(--muted); font-size: var(--t-s);
 }
-.gl-tab .gl-ti { font-size: 1.05em; line-height: 1; }
-.gl-tab .gtc-n { margin-left: 1px; font-size: .8em; opacity: .7; font-variant-numeric: tabular-nums; }
+.gl-tab .gl-ti { font-size: var(--t-l); line-height: 1; }
+.gl-tab .gtc-n { margin-left: 1px; font-size: var(--t-s); opacity: .7; font-variant-numeric: tabular-nums; }
 @media (hover: hover) { .gl-tab:hover { color: var(--text); background: var(--panel2); } }
 .gl-tab.on {
   color: var(--text); font-weight: 600;
@@ -210,10 +210,10 @@
 .gl-shelves { display: flex; flex-direction: column; gap: 14px; padding-bottom: 6px; border-bottom: 1px solid var(--line); margin-bottom: 4px; }
 .gshelf { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
 .gsh-h { display: flex; align-items: center; gap: 8px; }
-.gsh-h h4 { margin: 0; flex: 1; font-size: 1em; }
-.gsh-n { font-family: var(--font, inherit); font-weight: 400; font-size: .8em; color: var(--muted); }
+.gsh-h h4 { margin: 0; flex: 1; font-size: var(--t-m); }
+.gsh-n { font-family: var(--font, inherit); font-weight: 400; font-size: var(--t-s); color: var(--muted); }
 .gsh-nav { display: inline-flex; gap: 2px; }
-.gsh-nav button { padding: 2px 10px; font-size: 1.2em; line-height: 1.1; }
+.gsh-nav button { padding: 2px 10px; font-size: var(--t-xl); line-height: 1.1; }
 @media (hover: none) { .gsh-nav { display: none; } }
 .gsh-row {
   display: flex; gap: 10px; overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x proximity;
@@ -227,12 +227,12 @@
 }
 @media (hover: hover) { .gmini:hover { background: var(--panel2); transform: translateY(-2px); box-shadow: 0 8px 18px rgba(0, 0, 0, .35); border-color: color-mix(in srgb, var(--cc) 60%, transparent); } }
 .gmini.live { border-color: var(--glive); }
-.gmini .gb-tl .gnew, .gmini .gb-tl .gupd { font-size: .64em; }
+.gmini .gb-tl .gnew, .gmini .gb-tl .gupd { font-size: var(--t-xs); }
 .gm-t {
-  padding: 6px 9px 0; font-weight: 600; font-size: .92em; line-height: 1.25; height: calc(2.5em + 6px); overflow: hidden; overflow-wrap: anywhere;
+  padding: 6px 9px 0; font-weight: 600; font-size: var(--t-s); line-height: 1.25; height: calc(2.5em + 6px); overflow: hidden; overflow-wrap: anywhere;
   display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical;
 }
-.gm-a { padding: 0 9px 7px; font-size: .74em; color: var(--muted); }
+.gm-a { padding: 0 9px 7px; font-size: var(--t-xs); color: var(--muted); }
 
 /* ---------------------------------------------------------------- «🔥 Зараз» */
 .gl-strip {
@@ -245,13 +245,13 @@
   background: var(--panel2); border: 1px solid transparent; border-radius: 12px;
 }
 .gnc > svg, .gnc > .gico { width: 34px; height: 34px; flex: none; }
-.gnc > .gemo { font-size: 1.8em; flex: none; }
+.gnc > .gemo { font-size: var(--t-xxl); flex: none; }
 .gnc-t { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .gnc-t > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.gnc-k { font-size: .68em; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); }
-.gnc-who { display: flex; align-items: center; gap: 6px; color: var(--ok); font-size: .86em; }
+.gnc-k { font-size: var(--t-xs); text-transform: uppercase; letter-spacing: .07em; color: var(--muted); }
+.gnc-who { display: flex; align-items: center; gap: 6px; color: var(--ok); font-size: var(--t-s); }
 .gnc-b { flex: 1 1 100%; display: flex; gap: 6px; flex-wrap: wrap; }
-.gnc-b button, .gnc > button { padding: 6px 13px; font-size: .9em; }
+.gnc-b button, .gnc > button { padding: 6px 13px; font-size: var(--t-s); }
 .gnc-cont { border-color: var(--accent2); background: linear-gradient(135deg, rgba(244, 197, 66, .13), var(--panel2) 65%); }
 .gnc-solo { border-color: var(--glive); }
 @media (hover: hover) { .gnc:hover { background: var(--panel3); } .gnc-cont:hover { background: linear-gradient(135deg, rgba(244, 197, 66, .2), var(--panel3) 65%); } }
@@ -265,11 +265,11 @@
 .gday-ring .bg { stroke: var(--bg2); }
 .gday-ring .fg { stroke: var(--accent); stroke-linecap: round; transition: stroke-dasharray .5s ease; }
 .gday-ring.full .fg { stroke: var(--ok); }
-.gday-ring b { font-family: var(--display); font-size: 1.2em; line-height: 1; }
-.gday-ring small { font-size: .62em; color: var(--muted); line-height: 1.1; }
+.gday-ring b { font-family: var(--display); font-size: var(--t-xl); line-height: 1; }
+.gday-ring small { font-size: var(--t-xs); color: var(--muted); line-height: 1.1; }
 .gday-ht { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
 .gday-chips { display: flex; flex-wrap: wrap; gap: 5px; }
-.gday-chip { font-size: .8em; padding: 3px 9px; border-radius: 999px; background: var(--bg2); white-space: nowrap; }
+.gday-chip { font-size: var(--t-s); padding: 3px 9px; border-radius: 999px; background: var(--bg2); white-space: nowrap; }
 .gday-chip.gold { color: var(--accent); background: rgba(244, 197, 66, .13); font-weight: 600; }
 .gday-chip.ok { color: var(--ok); background: rgba(123, 211, 137, .11); }
 .gday-chip.hot { color: #ffcf8f; background: rgba(197, 118, 58, .2); }
@@ -280,7 +280,7 @@
 .gday { cursor: pointer; }
 .gday-ic { display: inline-grid; place-items: center; width: 30px; height: 30px; flex: none; }
 .gday-ic > svg, .gday-ic > .gico { width: 30px; height: 30px; }
-.gday-ic > .gemo { font-size: 1.5em; }
+.gday-ic > .gemo { font-size: var(--t-xl); }
 .gday.todo { border-color: rgba(244, 197, 66, .4); background: linear-gradient(135deg, rgba(244, 197, 66, .1), var(--panel2) 60%); }
 .gday.done { border-color: rgba(123, 211, 137, .28); background: rgba(123, 211, 137, .06); }
 .gday.done .gday-st { color: var(--ok); }
@@ -324,14 +324,14 @@
   .gtiles, .gtblock > .gtiles { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
   .gt-hint, .gt-sub { display: none; }
   .gt-body { padding: 7px 9px 0; }
-  .gt-name { font-size: .95em; }
+  .gt-name { font-size: var(--t-m); }
   .gt-foot { padding: 6px 9px 9px; gap: 4px; }
-  .gt-foot button { padding: 5px 10px; font-size: .84em; }
+  .gt-foot button { padding: 5px 10px; font-size: var(--t-s); }
   .gt-foot .gt-extra { display: none; }
   .gmini { flex-basis: 146px; }
   .gday-head { gap: 10px; }
   .gday-ring { width: 52px; height: 52px; }
-  .ggroup { font-size: 1.04em; }
+  .ggroup { font-size: var(--t-l); }
 }
 @media (max-width: 380px) {
   .gtiles, .gtblock > .gtiles { gap: 8px; }
@@ -340,7 +340,7 @@
 }
 @media (max-width: 600px) {
   .gl-find, .gl-tool, .gl-tools .gviewsw { height: 40px; }
-  .gl-tab { padding: 5px 11px; font-size: .9em; }
+  .gl-tab { padding: 5px 11px; font-size: var(--t-s); }
 }
 body.pad-on .gb .gstar { opacity: 1; }
 /* одна картка в «Зараз» — на всю ширину, а не вузька з «Гончаре…» */
@@ -354,8 +354,8 @@ body.pad-on .gb .gstar { opacity: 1; }
 .gday .sich-dots { flex: none; display: inline-flex; }
 .gday-go { width: 34px; height: 34px; padding: 0; justify-content: center; border-radius: 50%; flex: none; }
 .gday-go > span { display: none; }
-.gday-go::before { content: '▶'; font-size: .78em; margin-left: 2px; }
-.gday.done .gday-go::before { content: '✓'; margin: 0; font-size: .95em; color: var(--ok); }
+.gday-go::before { content: '▶'; font-size: var(--t-xs); margin-left: 2px; }
+.gday.done .gday-go::before { content: '✓'; margin: 0; font-size: var(--t-m); color: var(--ok); }
 @container (min-width: 290px) {
   .gday-go { width: auto; height: auto; padding: 6px 12px; border-radius: 10px; }
   .gday-go > span { display: inline; }

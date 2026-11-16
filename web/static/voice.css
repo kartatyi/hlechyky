@@ -2,7 +2,7 @@
    Кнопка в шапці; поки ти в голосі — смуга в самій шапці (вона липка, тож смугу видно на будь-якій сторінці); у грі на
    весь екран — кружечок, що тягається; трансляція — сцена під смугою або віконце поверх сторінки; панель — подробиці. */
 
-header .vcbtn { position: relative; padding: 6px 9px; font-size: 1.05em; }
+header .vcbtn { position: relative; padding: 6px 9px; font-size: var(--t-l); }
 header .vcbtn .badge { position: absolute; top: -4px; right: -4px; }
 header .vcbtn.live:not(.on) .vc-ico { filter: drop-shadow(0 0 4px color-mix(in srgb, var(--ok) 70%, transparent)); }
 header .vcbtn.on { background: color-mix(in srgb, var(--ok) 28%, var(--panel2)); border-color: color-mix(in srgb, var(--ok) 60%, var(--line)); }
@@ -43,7 +43,7 @@ header:has(> #vcStrip:not([hidden])), header:has(> .vcscreen.stage:not([hidden])
 .vcstrip.joining { color: var(--muted); }
 .vcs-row { display: flex; align-items: center; gap: 10px; min-width: 0; max-width: 1568px; margin: 0 auto; }
 .vcs-row > * { flex: none; }
-.vcs-label { font-size: .92em; white-space: nowrap; }
+.vcs-label { font-size: var(--t-s); white-space: nowrap; }
 .vcstrip.hint .vcs-label { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--muted); }
 .vcstrip.hint .vcs-label b { color: var(--text); font-weight: 600; }
 .vcs-n { color: var(--muted); }
@@ -56,24 +56,24 @@ header:has(> #vcStrip:not([hidden])), header:has(> .vcscreen.stage:not([hidden])
 .vcs-faces.sm { gap: 0; }
 .vcs-faces.sm .vc-face + .vc-face { margin-left: -6px; }
 .vcs-faces.sm .ava { box-shadow: 0 0 0 2px var(--bg); }
-.vcs-more { font-size: .82em; color: var(--muted); padding-left: 2px; }
-.vcs-talk { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .88em; color: var(--ok); }
-.vcs-rule, .vcs-warn { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .85em; color: var(--muted); }
+.vcs-more { font-size: var(--t-s); color: var(--muted); padding-left: 2px; }
+.vcs-talk { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--t-s); color: var(--ok); }
+.vcs-rule, .vcs-warn { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--t-s); color: var(--muted); }
 .vcs-warn { color: var(--accent); }
 .vcs-sp { flex: 1 1 0; min-width: 0; }
 .vcs-pill {
-  display: inline-flex; align-items: center; gap: 6px; padding: 4px 11px; border-radius: 999px; font-size: .88em;
+  display: inline-flex; align-items: center; gap: 6px; padding: 4px 11px; border-radius: 999px; font-size: var(--t-s);
   background: color-mix(in srgb, var(--accent) 14%, var(--panel2)); border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line)); color: var(--text);
 }
 .vcs-pill b { color: var(--accent); font-weight: 600; }
 .vcs-pill.on { background: color-mix(in srgb, var(--accent) 30%, var(--panel2)); border-color: var(--accent2); }
 .vcs-pill.mine { padding-right: 3px; }
-.vcs-pill.mine button { padding: 2px 9px; border-radius: 999px; font-size: .95em; color: var(--accent); }
+.vcs-pill.mine button { padding: 2px 9px; border-radius: 999px; font-size: var(--t-m); color: var(--accent); }
 .vcs-ctl { display: flex; align-items: center; gap: 6px; }
-.vcs-b { width: 36px; height: 36px; padding: 0; justify-content: center; border-radius: 50%; font-size: 1.05em; }
+.vcs-b { width: 36px; height: 36px; padding: 0; justify-content: center; border-radius: 50%; font-size: var(--t-l); }
 .vcs-b.off { background: color-mix(in srgb, var(--danger) 26%, var(--panel2)); border-color: color-mix(in srgb, var(--danger) 55%, var(--line)); }
 .vcs-b.on { background: color-mix(in srgb, var(--accent) 26%, var(--panel2)); border-color: var(--accent2); }
-.vcs-leave { width: auto; padding: 0 14px; border-radius: 999px; font-size: .92em; font-weight: 600; color: #ffd9d9;
+.vcs-leave { width: auto; padding: 0 14px; border-radius: 999px; font-size: var(--t-s); font-weight: 600; color: #ffd9d9;
   background: color-mix(in srgb, var(--danger) 42%, var(--panel2)); border-color: color-mix(in srgb, var(--danger) 70%, var(--line)); }
 .vcs-leave:hover { background: color-mix(in srgb, var(--danger) 58%, var(--panel2)); }
 .vcs-join { padding: 5px 14px; }
@@ -89,23 +89,23 @@ body.gfull .vcstrip, body.g-imm .vcstrip { display: none; }
 }
 body.gfull .vcbubble:not([hidden]), body.g-imm .vcbubble:not([hidden]) { display: grid; }
 .vcbubble:active { transform: none; cursor: grabbing; }
-.vcbubble .vcb-ico { font-size: 1.45em; line-height: 1; }
+.vcbubble .vcb-ico { font-size: var(--t-xl); line-height: 1; }
 .vcbubble .vcb-n { position: absolute; right: -4px; top: -4px; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 10px;
-  display: grid; place-items: center; font-size: .72em; font-weight: 700; background: var(--panel3); border: 1px solid var(--line); }
+  display: grid; place-items: center; font-size: var(--t-xs); font-weight: 700; background: var(--panel3); border: 1px solid var(--line); }
 .vcbubble.muted { background: color-mix(in srgb, var(--danger) 28%, var(--panel2)); border-color: color-mix(in srgb, var(--danger) 65%, var(--line)); }
 .vcbubble.talk { box-shadow: 0 0 0 3px var(--ok), 0 0 16px color-mix(in srgb, var(--ok) 65%, transparent), 0 8px 22px rgba(0, 0, 0, .45); }
 
 /* ---------- трансляція ---------- */
 .vcscreen[hidden] { display: none; }
 .vcscreen { --vcs-h: min(56vh, 620px); position: relative; display: flex; flex-direction: column; background: #050b08; min-width: 0; }
-.vcs-bar { display: flex; align-items: center; gap: 4px; padding: 4px 6px 4px 12px; background: var(--panel); border-bottom: 1px solid var(--line); font-size: .9em; }
+.vcs-bar { display: flex; align-items: center; gap: 4px; padding: 4px 6px 4px 12px; background: var(--panel); border-bottom: 1px solid var(--line); font-size: var(--t-s); }
 .vcs-who { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
 .vcs-bar button { padding: 4px 8px; }
 .vcs-vol { display: flex; align-items: center; gap: 4px; color: var(--muted); }
 .vcs-vol input { width: 80px; accent-color: var(--accent); }
 .vcs-body { position: relative; flex: 1 1 auto; min-height: 0; display: grid; place-items: center; }
 .vcs-video { display: block; width: 100%; height: 100%; object-fit: contain; background: #000; }
-.vcs-wait { position: absolute; margin: 0; color: var(--muted); font-size: .92em; }
+.vcs-wait { position: absolute; margin: 0; color: var(--muted); font-size: var(--t-s); }
 .vcs-grip, .vcs-corner { display: none; }
 /* сцена — у шапці, під смугою, на всю ширину */
 .vcscreen.stage { order: 101; flex: 1 0 100%; margin: 0 -16px -8px; border-top: 1px solid var(--line); }
@@ -139,9 +139,9 @@ body.gfull .vcbubble:not([hidden]), body.g-imm .vcbubble:not([hidden]) { display
 .vcpanel[hidden] { display: none; }
 .vcpanel p { margin: 0; line-height: 1.4; }
 .vc-head { display: flex; align-items: center; gap: 8px; }
-.vc-head b { flex: 1; font-family: var(--display); font-size: 1.1em; }
+.vc-head b { flex: 1; font-family: var(--display); font-size: var(--t-l); }
 .vc-x { padding: 4px 8px; }
-.vc-join { width: 100%; justify-content: center; padding: 11px 14px; font-size: 1.02em; }
+.vc-join { width: 100%; justify-content: center; padding: 11px 14px; font-size: var(--t-m); }
 .vc-who { display: flex; align-items: center; gap: 10px; }
 .vc-who b { font-weight: 600; }
 .vc-who .vcs-faces .vc-face { width: 26px; height: 26px; }
@@ -155,22 +155,22 @@ body.gfull .vcbubble:not([hidden]), body.g-imm .vcbubble:not([hidden]) { display
 .vc-m:hover { background: var(--panel2); }
 .vc-m.talk { background: color-mix(in srgb, var(--ok) 9%, transparent); }
 .vc-m .vc-face { grid-area: ava; width: 38px; height: 38px; }
-.vc-m .vc-face .ava { font-size: 1em; }
+.vc-m .vc-face .ava { font-size: var(--t-m); }
 .vc-nick { grid-area: nick; background: none; border: 0; padding: 0; text-align: left; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
 .vc-nick:hover { background: none; text-decoration: underline; }
-.vc-marks { grid-area: marks; display: flex; gap: 6px; align-items: center; font-size: .85em; }
-.vc-marks .vc-watch { padding: 3px 9px; font-size: .95em; }
+.vc-marks { grid-area: marks; display: flex; gap: 6px; align-items: center; font-size: var(--t-s); }
+.vc-marks .vc-watch { padding: 3px 9px; font-size: var(--t-m); }
 .vc-marks .vc-watch.on { border-color: var(--accent2); color: var(--accent); }
-.vc-rule { color: var(--muted); font-size: .9em; white-space: nowrap; }
-.vc-state { grid-area: state; font-size: .78em; color: var(--muted); min-height: 1em; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vc-rule { color: var(--muted); font-size: var(--t-s); white-space: nowrap; }
+.vc-state { grid-area: state; font-size: var(--t-xs); color: var(--muted); min-height: 1em; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .vc-state.ok { color: color-mix(in srgb, var(--ok) 70%, var(--muted)); }
 .vc-state.bad { color: var(--danger); cursor: help; }
-.vc-vol { grid-area: vol; display: flex; align-items: center; gap: 4px; font-size: .8em; color: var(--muted); }
+.vc-vol { grid-area: vol; display: flex; align-items: center; gap: 4px; font-size: var(--t-s); color: var(--muted); }
 .vc-vol input { width: 92px; accent-color: var(--accent); }
 .vc-m.me { grid-template-areas: "ava nick marks" "ava state state"; }
 
 .vc-ctl { display: flex; flex-wrap: wrap; gap: 6px; }
-.vc-b { padding: 7px 10px; font-size: .92em; }
+.vc-b { padding: 7px 10px; font-size: var(--t-s); }
 .vc-b.off { background: color-mix(in srgb, var(--danger) 20%, var(--panel2)); border-color: color-mix(in srgb, var(--danger) 45%, var(--line)); }
 .vc-b.on { background: color-mix(in srgb, var(--accent) 20%, var(--panel2)); border-color: var(--accent2); }
 .vc-leave { margin-left: auto; }
@@ -187,9 +187,9 @@ body.gfull .vcbubble:not([hidden]), body.g-imm .vcbubble:not([hidden]) { display
 .vc-testb.on { background: color-mix(in srgb, var(--ok) 28%, var(--panel2)); border-color: var(--ok); }
 
 .vc-set { border-top: 1px solid var(--line); padding-top: 8px; }
-.vc-set summary { cursor: pointer; color: var(--muted); font-size: .92em; }
+.vc-set summary { cursor: pointer; color: var(--muted); font-size: var(--t-s); }
 .vc-set[open] summary { margin-bottom: 8px; }
-.vc-row { display: flex; align-items: center; gap: 8px; justify-content: space-between; margin: 6px 0; font-size: .92em; }
+.vc-row { display: flex; align-items: center; gap: 8px; justify-content: space-between; margin: 6px 0; font-size: var(--t-s); }
 .vc-row select { max-width: 60%; font: inherit; background: var(--panel2); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 5px 6px; }
 .vc-row input[type=range] { flex: 1; max-width: 60%; accent-color: var(--accent); }
 .vc-check { justify-content: flex-start; }
@@ -222,7 +222,7 @@ body.gfull .vcbubble:not([hidden]), body.g-imm .vcbubble:not([hidden]) { display
   .vcs-faces .vc-face:nth-child(n + 5) { display: none; }
   .vcs-leave span { display: none; }
   .vcs-leave { width: 36px; padding: 0; border-radius: 50%; }
-  .vcstrip.hint .vcs-label { font-size: .85em; }
+  .vcstrip.hint .vcs-label { font-size: var(--t-s); }
   .vcscreen.stage { margin: 0 -12px -8px; }
   .vcscreen.stage .vcs-body { height: auto; aspect-ratio: 16 / 9; max-height: 45vh; }
   .vcscreen.stage .vcs-grip { display: none; }
@@ -231,7 +231,7 @@ body.gfull .vcbubble:not([hidden]), body.g-imm .vcbubble:not([hidden]) { display
 }
 
 /* Картка столу: 🎙 на тих, хто в голосі столу, кільце — хто говорить, і кнопка голосу (web/voice.js, decorate). */
-.gtable .gseat.vc-in::after { content: '🎙'; margin-left: 4px; font-size: .8em; }
+.gtable .gseat.vc-in::after { content: '🎙'; margin-left: 4px; font-size: var(--t-s); }
 .gtable .gseat.vc-talk { box-shadow: 0 0 0 2px var(--ok); }
 .gtable .gseat.gvc { cursor: pointer; border-style: dashed; }
 /* Під палець «🎙 Говорити» була 26–28 px заввишки — тепер не нижча за 36. */
@@ -239,4 +239,4 @@ body.gfull .vcbubble:not([hidden]), body.g-imm .vcbubble:not([hidden]) { display
   .gtable .gseat.gvc { min-height: 36px; display: inline-flex; align-items: center; padding-inline: 12px; }
 }
 .gtable .gseat.gvc.on { border-style: solid; border-color: color-mix(in srgb, var(--ok) 60%, var(--line)); background: color-mix(in srgb, var(--ok) 22%, var(--panel2)); }
-.vc-rulebar { font-size: .88em; padding: 6px 9px; border-radius: 9px; background: color-mix(in srgb, var(--accent) 12%, var(--panel2)); border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line)); }
+.vc-rulebar { font-size: var(--t-s); padding: 6px 9px; border-radius: 9px; background: color-mix(in srgb, var(--accent) 12%, var(--panel2)); border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line)); }
