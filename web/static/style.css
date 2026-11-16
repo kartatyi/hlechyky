@@ -244,7 +244,8 @@ body:not(.chat-collapsed) header .chat-toggle { background: var(--panel3); color
   header .volwrap.open #volume { display: block; }
   header .volwrap.open #volBtn { background: var(--panel2); color: var(--text); }
 }
-@media (max-width: 1300px) {
+/* 1100, а не 1300 (листопад 2026): нік, 🎁 і 💡 пішли з шапки в меню «Я», тож підписам розділів місця вистачає довше. */
+@media (max-width: 1100px) {
   body:not(.route-efir) header .vswitch .lbl { display: none; }
   body:not(.route-efir) header .vswitch button { padding: 0 10px; font-size: var(--t-l); }
 }

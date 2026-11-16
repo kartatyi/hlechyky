@@ -217,3 +217,5 @@ body.route-home .hellobar { display: none; }
 }
 /* У гостя жовта — «Слухати зараз» у привітанні; ▶ у картці тоді спокійна. */
 .hm.guest .hm-air .bigplay.primary { background: var(--panel3); color: var(--accent); }
+/* Ефір лежить — у шапці телефона з'являється чип «ефір ↓»; назві розділу поруч лишалась одна літера, тож ховаємо її. */
+@media (max-width: 560px) { body.air-down header .hdrtitle { display: none; } }

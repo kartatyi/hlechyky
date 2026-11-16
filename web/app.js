@@ -807,6 +807,8 @@
     banner.textContent = 'Ой-йой: ефір не відповідає (liquidsoap). Черга збережеться, треки підуть, щойно він оживе.';
     // Зелений чіп «ефір» у шапці — шум: показуємо лише тоді, коли з ефіром щось не так.
     $('liqStatus').hidden = !!state.liquidsoapOk;
+    document.body.classList.toggle('air-down', !state.liquidsoapOk);   // на телефоні чип «ефір ↓» забирає місце в назви розділу
+
     $('liqStatus').className = 'chip err';
     $('liqStatus').textContent = 'ефір ↓';
 
