@@ -114,3 +114,14 @@ header .memenu .badge { position: static; }
   .sug .btns button { min-width: 40px; min-height: 40px; justify-content: center; }
   .queue-empty .qe-btn button { white-space: normal; text-align: left; min-height: 40px; }
 }
+
+/* ---- Ігри, «☀ Сьогодні» ----
+   Картки ширші й назва у два рядки: «Шахова за…» і «Без…» читались лише з підказки. Правила глека — рядок, що
+   розгортається (на телефоні підказки нема). */
+@media (min-width: 901px) { .gday-cards { grid-template-columns: repeat(auto-fill, minmax(236px, 1fr)); } }
+.gday b { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; line-height: 1.2; }
+.gtoday-pay > summary { display: inline-block; cursor: pointer; list-style: none; text-decoration: underline dotted; text-underline-offset: 3px; }
+.gtoday-pay > summary::-webkit-details-marker { display: none; }
+.gtoday-pay > summary:hover { color: var(--text); }
+.gtoday-pay > p { margin: 6px 0 2px; max-width: 78ch; line-height: 1.5; }
+@media (pointer: coarse) { .gday-go { width: 40px; height: 40px; } }

@@ -1881,6 +1881,14 @@
 
   /// Що зроблено в Лавці — рядком у балачках: «🎁 Оля дарує Петрові …», «💌 Оля присвячує …», «🎆 Оля запускає феєрверк!».
   const DEEDS = { gift: '🎁', dedication: '💌', fx: '🎆' };
+  const DJ_LONG = 220;   // довше — зведення Глека згортається до трьох рядків
+  document.addEventListener('click', (e) => {
+    const b = e.target.closest('.dj-more');
+    if (!b) return;
+    const open = b.closest('.msg').classList.toggle('open');
+    b.textContent = open ? 'згорнути' : 'далі';
+    b.setAttribute('aria-expanded', String(open));
+  });
   function fillMessage(el, m, mine, live) {
     const isLog = m.kind === 'system';
     // Монетка живе в тій самій розкладці, що й кубик (.msg.dice — рядок у флексі); /choose і /8ball
@@ -1922,7 +1930,12 @@
       paintRollRange(el);
     } else if (m.kind === 'dj' || m.kind === 'padel') {
       // Падельня — рядок Глека про матч: ім'я Глека, як у dj-рядків, а не людини з таким ніком
-      el.innerHTML = `<img src="/static/glek.svg" alt=""><div><span class="n">${esc(m.kind === 'padel' ? dj() : m.nick)}</span>${linkify(m.text)}<span class="time">${tm(m.at)}</span></div>`;
+      // Довгі зведення Глека (нічні підсумки, «Січ») займали весь екран, і живих реплік серед них не було видно:
+      // понад DJ_LONG знаків показуємо три рядки й «далі» (клік — увесь текст; обробник один на сторінку, нижче).
+      const long = String(m.text || '').length > DJ_LONG;
+      el.classList.toggle('long', long);
+      el.innerHTML = `<img src="/static/glek.svg" alt=""><div><div class="djb"><span class="n">${esc(m.kind === 'padel' ? dj() : m.nick)}</span>${linkify(m.text)}</div>`
+        + `${long ? '<button type="button" class="dj-more" aria-expanded="false">далі</button>' : ''}<span class="time">${tm(m.at)}</span></div>`;
     } else if (isLog) {
       el.innerHTML = `<span class="time">${tm(m.at)}</span>${linkify(m.text)}`;
     } else {

@@ -617,6 +617,12 @@ button.vplay { padding: 3px 8px; }
 .msg.dj { display: grid; grid-template-columns: 28px 1fr; gap: 8px; align-items: start; background: #2a2210; border: 1px solid #4a3a12; border-radius: 10px; padding: 6px 8px; }
 .msg.dj img { width: 28px; height: 28px; }
 .msg.dj .n { color: var(--clay); }
+/* Довге зведення Глека — три рядки й «далі»: живі репліки не тонуть у нічних підсумках. */
+.msg.dj .djb { display: inline; }
+.msg.dj.long:not(.open) .djb { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; }
+.msg.dj .dj-more { padding: 0; border: 0; background: transparent; color: var(--accent2); font-size: .85em; }
+.msg.dj .dj-more:hover { background: transparent; text-decoration: underline; }
+.msg.dj.long .time { margin-left: 8px; }
 .msg.system { color: var(--muted); font-size: .85em; }
 .msg.system .n { display: none; }
 .msg.system .time { margin-left: 0; margin-right: 6px; }

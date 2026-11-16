@@ -3255,7 +3255,8 @@
           + (beat.length ? ' · обійшов ' + beat.slice(0, 2).join(', ') + (beat.length > 2 ? ' і ще ' + (beat.length - 2) : '') : ''));
       return { dots, line, hot: false };
     }
-    if (!seats.length) return { dots: '', line: 'ніхто ще не грав — будь першим', hot: false };
+    // Ніхто ще не грав — рядка нема: зранку той самий «будь першим» стояв під кожною з дванадцяти карток.
+    if (!seats.length) return { dots: '', line: '', hot: false };
     // найкращий результат дня: очки гри, а де їх нема — спроби й час з топу дня
     const best = seats[0];
     const t = (p.top || [])[0];
@@ -3339,13 +3340,15 @@
       // скільки ця головоломка дала сьогодні (з серією) — з daily.money; старий сервер не шле
       const got = daily && daily.money && daily.money.byGame ? daily.money.byGame[p.game] || 0 : 0;
       // Два рядки: назва і стан. Зіграна — свій результат; ще ні — що каже Січ («попереду Оля… · до +3») або «ще не розгадано».
-      const line = (solved || p.me || !seat ? what : seat.line) + (p.streak ? ' · 🔥 ' + p.streak : '') + (got > 0 ? ' · +' + got + ' 🏺' : '');
-      const tip = dayTitle(p) + '\n' + what + (seat ? '\nСіч: ' + seat.line : '');
+      // Нема чого сказати (ще не грав ніхто, серії й черепків нема) — картка лишається з самою назвою.
+      const line = [solved || p.me || !seat ? what : seat.line, p.streak ? '🔥 ' + p.streak : '', got > 0 ? '+' + got + ' 🏺' : ''].filter(Boolean).join(' · ');
+      const tip = dayTitle(p) + '\n' + what + (seat && seat.line ? '\nСіч: ' + seat.line : '');
       return '<div class="gdc gday ' + (solved ? 'done' : p.me ? 'miss' : 'todo') + (seat && seat.hot ? ' hot' : '') + '" data-pre="' + esc(p.game) + '" title="' + esc(tip) + '">'
         + '<span class="gday-ic">' + artIcon(p.game) + '</span><div><b>' + esc(dayTitle(p)) + '</b>'
-        + '<span class="small gday-st">' + (seat && seat.dots ? '<span class="sich-dots">' + seat.dots + '</span>' : '') + '<span>' + esc(line) + '</span></span>'
+        + (line ? '<span class="small gday-st">' + (seat && seat.dots ? '<span class="sich-dots">' + seat.dots + '</span>' : '') + '<span>' + esc(line) + '</span></span>' : '')
         + '</div>'
-        + '<button class="' + (solved ? 'ghost' : 'primary') + ' gmain gday-go" data-solo="' + esc(p.game) + '" aria-label="' + (solved ? 'Глянути' : 'Грати') + '"'
+        // спокійна, а не жовта: дванадцять жовтих ▶ поспіль перекрикували «Грати» в «🔥 Зараз»
+        + '<button class="' + (solved ? 'ghost' : 'tonal') + ' gmain gday-go" data-solo="' + esc(p.game) + '" aria-label="' + (solved ? 'Глянути' : 'Грати') + '"'
         + (solved ? '' : ' title="Розгадай — і хапай щоденний глек"') + '><span>' + (solved ? 'Глянути' : 'Грати') + '</span></button></div>';
     }).join('');
     const extras = sichCard() + giftCard() + tourCard() + padelCard();
@@ -3398,7 +3401,8 @@
       + (p.fullNeed ? '; ' + p.fullNeed + ' різних за день — ще +' + p.fullBonus : '')
       + (p.bestMax ? '; опівночі — до +' + p.bestMax + ' за місце серед тих, хто розв\'язав (перший — усе, останній — нуль)' : '')
       + (top.length ? '; першим місцям кожної — ' + top.join(' / ') + ', коли розв\'язало щонайменше ' + (p.topMin || 1) : '') + '.';
-    return '<p class="muted small gtoday-pay" title="' + esc(tip) + '">' + esc(bits.join(' · ')) + '</p>';
+    // Коротко — у рядку, повністю — по кліку: раніше повне пояснення жило лише в підказці, якої на телефоні не видно.
+    return '<details class="muted small gtoday-pay"><summary>' + esc(bits[0]) + ' · як платить глек</summary><p>' + esc(tip) + '</p></details>';
   }
 
   // ---------------------------------------------------------------------------------------------
