@@ -4614,12 +4614,18 @@
 
   /// Стіл міряє себе знову, коли щось зрушило: вікно, картка (балачки згорнули, «⛶»), висота сторінки (над столом
   /// з'явився рядок). Через кадр, а не в самому ResizeObserver: зміна висоти стола там же викликала б його знову.
+  /// Плашки над сторінкою (нічний відбій, 🚨 тривога) — окремо: стіл стоїть рівно в один екран, тож коли плашка
+  /// зникає, висота body лишається та сама (100dvh), і без цього стіл не доростав би назад (записка #84).
   function fitWatch(st) {
     let raf = 0;
     const again = () => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; fitTable(st); }); };
     const ro = window.ResizeObserver ? new ResizeObserver(again) : null;
     const card = cardOf(st);
-    if (ro) { ro.observe(document.body); if (card) ro.observe(card); }
+    if (ro) {
+      ro.observe(document.body);
+      if (card) ro.observe(card);
+      document.querySelectorAll('body > .nightbar, body > .hellobar').forEach((b) => ro.observe(b));
+    }
     window.addEventListener('resize', again);
     return { stop() { if (ro) ro.disconnect(); window.removeEventListener('resize', again); cancelAnimationFrame(raf); } };
   }

@@ -76,8 +76,10 @@
   border-radius: 50%; background: rgba(15, 31, 24, .55); color: #e8eee6; font-size: 1em;
 }
 .gb .gstar.on { color: var(--accent); background: rgba(15, 31, 24, .78); }
+/* ☆ видно завжди (записка #80): на ПК вона ховалась, доки не наведеш мишку на плитку, — з картинками її перестали
+   знаходити («пропала зірочка»). Порожня — тихіша, щоб не сперечалась із картинкою; під мишкою й обрана ★ — на повну. */
 @media (hover: hover) {
-  .gb .gstar { opacity: .0; transition: opacity .15s; }
+  .gb .gstar { opacity: .72; transition: opacity .15s; }
   .gb .gstar.on, .gtile:hover .gb .gstar, .gb .gstar:focus-visible { opacity: 1; }
   .gb .gstar:hover { background: rgba(15, 31, 24, .85); }
 }

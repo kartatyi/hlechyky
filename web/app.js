@@ -4812,6 +4812,31 @@
     tick();
   }
 
+  // ---------- плашки над сторінкою → висота балачок ----------
+  // Нічний відбій, 🚨 тривога, «Сайт оновився» й «Назватись» стоять між шапкою й main і зсувають сторінку вниз, а
+  // колонка балачок рахує висоту від вікна (style.css, .chat). Скільки плашки займають разом із відступами — тримаємо
+  // в --bars-h, і балачки на стільки нижчі: інакше сторінка столу «в один екран» діставала зайву прокрутку (записка #84).
+  // Через кадр, а не в самому ResizeObserver: висота балачок міняє висоту body, за якою стежать столи.
+  (() => {
+    const bars = [...document.querySelectorAll('body > .nightbar, body > .hellobar')];
+    let last = -1, raf = 0;
+    const sync = () => {
+      raf = 0;
+      let h = 0;
+      for (const b of bars) {
+        const r = b.getBoundingClientRect();
+        if (r.height) h += r.height + (parseFloat(getComputedStyle(b).marginTop) || 0);
+      }
+      h = Math.ceil(h);
+      if (h !== last) { last = h; document.documentElement.style.setProperty('--bars-h', h + 'px'); }
+    };
+    if (window.ResizeObserver) {
+      const ro = new ResizeObserver(() => { if (!raf) raf = requestAnimationFrame(sync); });
+      bars.forEach((b) => ro.observe(b));
+    }
+    sync();
+  })();
+
   // ---------- нічний відбій ----------
   // Кого він стосується, каже /api/me (night: { from, to, days, minutes, left, text, notice }), решті там null. Котра
   // година й день у Києві — рахуємо тут і щопівхвилини: плашка має з'явитись опівночі й зникнути о шостій без
