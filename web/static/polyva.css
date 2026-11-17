@@ -134,7 +134,7 @@ header .memenu .badge { position: static; }
   --w0: #172a46; --w1: #0c1a20; --pad: #1a3c2b; --sky-orb: #ece8d6; --sky-halo: .16; --sky-oo: 1; --sky-stars: 1;
   --sky-cl: #37485f; --sky-cirrus: .22; --sky-deck: 0; --sky1: #0b1830; --sky2: #1c2f4f;
   --l1m: #1d3a3f; --lb: #152b2c; --l2m: #1a3337; --l3m: #10211b; --rock: #2c3a38; --rock-l: #4c5a55; --mist: #5d7477; --sky-mist: .5; --end: #142a25;
-  --tint: #2c5550; --sky-lamp: 1; --l2b: #12262a; --l2bm: #1b3438; --rock2: #2a3836; --rock2-l: #46544f;
+  --tint: #2c5550; --sun-x: 30%; --sky-lamp: 1; --l2b: #12262a; --l2bm: #1b3438; --rock2: #2a3836; --rock2-l: #46544f;
 
 }
 /* Відблиск угорі сторінки був завжди зеленкуватий — тепер бере відтінок неба. Низ лишається нашим #0f1f18. */
@@ -163,7 +163,58 @@ section.panel, aside.panel { --pbg: var(--panel); }
 :root[data-tint="c"] header .vswitch, :root[data-tint="c"] header .mini, :root[data-tint="c"] header .tools {
   background: linear-gradient(180deg, color-mix(in srgb, var(--tint) 20%, var(--bg2)), var(--bg2));
 }
+/* d — «глибина»: те саме, що c, плюс м'яка тінь під блоком; e — «скло»: блок напівпрозорий, крізь нього видно фон. */
+:root[data-tint="d"] section.panel, :root[data-tint="d"] aside.panel, :root[data-tint="e"] section.panel, :root[data-tint="e"] aside.panel {
+  border: 1px solid transparent;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--tint) 21%, var(--pbg)) 0, var(--pbg) 170px) padding-box,
+    linear-gradient(180deg, color-mix(in srgb, var(--tint) 80%, var(--line)) 0%, var(--line) 46%, color-mix(in srgb, var(--tint) 16%, var(--line)) 100%) border-box;
+  box-shadow: 0 22px 44px -26px rgba(0, 0, 0, .75), inset 0 1px 0 rgba(255, 255, 255, .05);
+}
+:root[data-tint="e"] section.panel, :root[data-tint="e"] aside.panel {
+  --pbg: color-mix(in srgb, var(--panel) 52%, transparent);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--tint) 18%, transparent) 0, transparent 170px) padding-box, linear-gradient(var(--pbg), var(--pbg)) padding-box;
+  border-color: color-mix(in srgb, var(--tint) 34%, var(--line));
+  -webkit-backdrop-filter: blur(14px) saturate(1.15); backdrop-filter: blur(14px) saturate(1.15);
+}
+:root[data-tint="d"] header .vswitch, :root[data-tint="d"] header .mini, :root[data-tint="d"] header .tools,
+:root[data-tint="e"] header .vswitch, :root[data-tint="e"] header .mini, :root[data-tint="e"] header .tools {
+  border-color: color-mix(in srgb, var(--tint) 55%, var(--line)); background: linear-gradient(180deg, color-mix(in srgb, var(--tint) 20%, var(--bg2)), var(--bg2));
+}
+/* f — «світло від сонця»: відблиск на верхньому краї й у блоці стоїть там, де зараз сонце (--sun-x), і йде за ним. */
+:root[data-tint="f"] section.panel, :root[data-tint="f"] aside.panel {
+  border: 1px solid transparent;
+  background: radial-gradient(85% 170px at var(--sun-x) 0, color-mix(in srgb, var(--tint) 30%, transparent) 0, transparent 100%) padding-box,
+    linear-gradient(var(--pbg), var(--pbg)) padding-box,
+    radial-gradient(62% 120% at var(--sun-x) 0, color-mix(in srgb, var(--tint) 96%, var(--line)) 0, var(--line) 100%) border-box;
+  box-shadow: 0 22px 44px -26px rgba(0, 0, 0, .75);
+}
+:root[data-tint="f"] header .vswitch, :root[data-tint="f"] header .mini, :root[data-tint="f"] header .tools {
+  border-color: color-mix(in srgb, var(--tint) 45%, var(--line)); background: linear-gradient(180deg, color-mix(in srgb, var(--tint) 18%, var(--bg2)), var(--bg2));
+}
+/* ---- фон сайту замість плаского зеленого
+ (варіанти на вибір — data-bg на <html>) ----
+   1 — «небо згори»: верх кожної сторінки — те саме небо, що на головній, сходить у наш зелений; 2 — «туман»: великі
+   м'які плями кольору неба; 3 — як 1, плюс берег з очеретом унизу кожної сторінки. Зерно — щоб не було «пластику». */
+:root[data-bg] { --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .07 0'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)'/%3E%3C/svg%3E"); }
+:root[data-bg="1"] body, :root[data-bg="3"] body {
+  background: var(--grain),
+    linear-gradient(180deg, color-mix(in srgb, var(--sk0) 78%, var(--bg)) 0, color-mix(in srgb, var(--sk1) 62%, var(--bg)) 120px, color-mix(in srgb, var(--sk2) 34%, var(--bg)) 270px, transparent 520px) no-repeat,
+    linear-gradient(180deg, var(--bg) 0, var(--bg) 60%, #0a1611 100%);
+}
+:root[data-bg="2"] body {
+  background: var(--grain),
+    radial-gradient(1500px 760px at 12% -8%, color-mix(in srgb, var(--tint) 30%, transparent) 0%, transparent 62%) no-repeat,
+    radial-gradient(1300px 900px at 104% 104%, color-mix(in srgb, var(--tint) 16%, transparent) 0%, transparent 60%) no-repeat,
+    linear-gradient(180deg, var(--bg) 0, #0b1813 100%);
+}
+:root[data-bg] body.route-home { background: var(--grain), linear-gradient(180deg, var(--bg) 0, var(--bg) 60%, #0a1611 100%); }
+:root[data-bg="1"] header, :root[data-bg="3"] header { background: transparent; border-bottom-color: transparent; -webkit-backdrop-filter: none; backdrop-filter: none; }
+:root[data-bg="1"] body.scrolled header, :root[data-bg="3"] body.scrolled header { background: rgba(15, 31, 24, .88); border-bottom-color: var(--line); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+:root[data-bg="1"] header::after, :root[data-bg="3"] header::after { display: none; }
+:root[data-bg="3"] body { position: relative; }
+:root[data-bg="3"] .sky-end { display: block; }
 /* Тонка смужка неба під шапкою — на кожній сторінці. */
+
 
 header::after { content: ''; position: absolute; left: 0; right: 0; top: 100%; height: 3px; pointer-events: none; background: linear-gradient(90deg, var(--sky1), var(--sky2)); }
 
@@ -214,8 +265,6 @@ main { position: relative; z-index: 1; }
 .ld-lamp { fill: #ffdf9c; opacity: var(--sky-lamp, 0); }
 .ld-lamp-g { fill: #ffc65c; opacity: .22; }
 .ld-l2 { fill: url(#ob-g2); }
-.ld-dam { fill: var(--lb); }
-.ld-dam-w { fill: var(--mist); opacity: .42; }
 .ld-l2b { fill: url(#ob-g2b); }
 .ld-rock2 { fill: var(--rock2); }
 .ld-rock2-l { fill: var(--rock2-l); opacity: .32; }

@@ -55,9 +55,6 @@ my $rock2T = pine(336, 308, 24, 11) . pine(378, 306, 30, 13) . crown(408, 300, 2
 my $nearT = '';
 for my $q ([34, 104, 34], [78, 78, 27], [124, 118, 38], [176, 86, 29], [216, 64, 23], [1790, 70, 24], [1832, 96, 31], [1880, 122, 39], [1930, 84, 28], [1972, 108, 35]) { my ($x, $hh, $w) = @$q;
   $nearT .= pine($x, ($x < 1000 ? y3L($x) : y3R($x)) + 4, $hh, $w); }
-# ---- гребля вдалині, у просвіті під мостом: низька стіна й біла вода зі скидів
-my $dam = '<rect x="900" y="347.4" width="208" height="9.2"/><rect x="938" y="343.6" width="8" height="5"/><rect x="1060" y="343.6" width="8" height="5"/>';
-my $damW = '<rect x="952" y="349.6" width="102" height="7"/><ellipse cx="1003" cy="357.8" rx="72" ry="2.2"/>';
 
 # ---- підвісний міст: два пілони-рами, несучий трос, підвіски, тонкий настил
 my $br = '';
@@ -144,7 +141,6 @@ my $svg = <<"SVG";
   <path class="ld-l1" filter="url(#ob-f1)" d="$far"/>
   <rect class="ld-mist" style="--k:.8" x="-40" y="286" width="2080" height="84"/>
   <g class="ld-br" filter="url(#ob-fb)">$br</g>
-  <g class="ld-dam" filter="url(#ob-fb)">$dam</g>
   <g class="ld-lamp">$lamp</g>
   <g class="ld-l2" filter="url(#ob-f2)"><path d="$bankL"/><path d="$bankR"/></g>
   <g filter="url(#ob-f3)"><path class="ld-rock" d="$rock"/><path class="ld-rock-l" d="$rockL"/></g>
@@ -152,7 +148,6 @@ my $svg = <<"SVG";
   <g class="ld-l2r" clip-path="url(#ob-cw)"><g filter="url(#ob-fr)" transform="matrix(1 0 0 -.42 0 505.5)"><path d="$bankL"/><path d="$bankR"/><path d="$rock"/></g></g>
   <g clip-path="url(#ob-cw)"><ellipse class="ld-refl" cx="0" cy="356" rx="62" ry="50"/></g>
   <g class="ld-mist" style="--k:.9" filter="url(#ob-b1)"><ellipse cx="1000" cy="354" rx="560" ry="13"/><ellipse cx="330" cy="346" rx="330" ry="11"/><ellipse cx="1680" cy="348" rx="340" ry="11"/></g>
-  <g class="ld-dam-w" filter="url(#ob-fb)">$damW</g>
   <path class="ld-glint" d="$glint"/>
   <g class="ld-st" filter="url(#ob-f3)">$st</g>
   <g class="ld-l2b" filter="url(#ob-f3)"><path d="$midL"/><path d="$midR"/>$midT$rock2T</g>
