@@ -103,12 +103,16 @@
     const cloud = fake && fake.wx ? (fake.wx === 'clear' ? 0 : 90) : wx && wx.cover != null ? wx.cover : k === 'clear' ? 0 : 70;
     const cover = clamp(cloud / 100, 0, 1) * (wet ? 0.86 : 0.62);
     const grey = [mix(hex('#141a22'), hex('#59646e'), t), mix(hex('#1c232b'), hex('#7f8b92'), t), mix(hex('#262e36'), hex('#a9b3b6'), t)];
-    const sk = c.sk.map((x, i) => mix(x, grey[i], cover));
+    // Небо не має перекрикувати сторінку: підмішуємо наш темний зелений — удень найбільше, бо день найяскравіший.
+    const dim = 0.16 + 0.2 * t;
+    const sk = c.sk.map((x, i) => mix(mix(x, grey[i], cover), BG, dim));
     const g = mix(c.g, mix(c.g, hex('#222b2a'), 0.5), cover);
     const l4 = mix(g, BG, 0.74);
     // Туман — колір обрію, розбілений; у «туман» за погодою його вдвічі більше.
-    const mist = mix(sk[2], hex('#ffffff'), 0.3 + 0.25 * t);
-    const l1 = mix(sk[2], g, 0.3), l2 = mix(sk[2], g, 0.7), l3 = mix(mix(g, BG, 0.34), sk[2], 0.1);
+    const mist = mix(sk[2], hex('#ffffff'), 0.2 + 0.16 * t);
+
+    const l1 = mix(sk[2], g, 0.3), l2 = mix(sk[2], g, 0.7), l2b = mix(sk[2], g, 0.9), l3 = mix(mix(g, BG, 0.34), sk[2], 0.1);
+
     pos = { alt: s.alt, ha: s.ha, top: s.top, day: s.alt > -4 };
     return {
       phase, kind: k,
@@ -121,8 +125,13 @@
         // граніт: трохи тепліший і світліший за берег, але в тому ж світлі (уночі не світиться)
         '--rock': css(mix(l2, mix(sk[2], hex('#b9a89a'), 0.5), 0.26)), '--rock-l': css(mix(l2, mix(sk[2], hex('#e6d8c8'), 0.5), 0.4)),
         '--sky-lamp': clamp(1 - t * 2.4, 0, 1).toFixed(2),
+        // ближчі схили з деревами: темніші за далекі береги, низ — у тумані; скеля на них — у тому ж світлі
+        '--l2b': css(l2b), '--l2bm': css(mix(l2b, mist, 0.42)),
+        '--rock2': css(mix(l2b, mix(sk[2], hex('#b9a89a'), 0.5), 0.34)), '--rock2-l': css(mix(l2b, mix(sk[2], hex('#e6d8c8'), 0.5), 0.5)),
         '--l3': css(l3), '--l3m': css(mix(l3, mist, 0.16)), '--l4': css(l4), '--l4b': css(mix(l4, BG, 0.5)),
         '--mist': css(mist), '--sky-mist': Math.min(1, c.mist * (k === 'fog' ? 1.8 : wet ? 1.25 : 1)).toFixed(2),
+        // спільний колір сторінки: колір обрію цієї миті — ним підсвічено рамки й блоки по всьому сайту
+        '--tint': css(mix(mix(c.sk[2], grey[2], cover), g, 0.12)),
         '--end': css(mix(BG, mix(g, sk[2], 0.35), 0.3 + 0.1 * t)),
         '--w0': css(mix(sk[2], sk[1], 0.3)), '--w1': css(mix(sk[1], g, 0.62)),
         '--pad': css(mix(g, hex('#3f9e68'), 0.25 + 0.25 * t)),
@@ -240,6 +249,7 @@
     init(opts) {
       o = opts || {};
       const q = new URLSearchParams(location.search);
+      if (q.get('tint')) document.documentElement.dataset.tint = q.get('tint');   // перегляд варіантів: ?tint=a|b|c
       if (q.get('sky') || q.get('wx')) fake = { at: parseTime(q.get('sky')), wx: WORD[q.get('wx')] ? q.get('wx') : null };
       mount();
       paint();

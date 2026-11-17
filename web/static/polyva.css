@@ -134,12 +134,37 @@ header .memenu .badge { position: static; }
   --w0: #172a46; --w1: #0c1a20; --pad: #1a3c2b; --sky-orb: #ece8d6; --sky-halo: .16; --sky-oo: 1; --sky-stars: 1;
   --sky-cl: #37485f; --sky-cirrus: .22; --sky-deck: 0; --sky1: #0b1830; --sky2: #1c2f4f;
   --l1m: #1d3a3f; --lb: #152b2c; --l2m: #1a3337; --l3m: #10211b; --rock: #2c3a38; --rock-l: #4c5a55; --mist: #5d7477; --sky-mist: .5; --end: #142a25;
-  --sky-lamp: 1;
+  --tint: #2c5550; --sky-lamp: 1; --l2b: #12262a; --l2bm: #1b3438; --rock2: #2a3836; --rock2-l: #46544f;
 
 }
 /* Відблиск угорі сторінки був завжди зеленкуватий — тепер бере відтінок неба. Низ лишається нашим #0f1f18. */
 body { background: radial-gradient(1200px 600px at 20% -10%, color-mix(in srgb, var(--sky2) 30%, #1d3a2c) 0%, var(--bg) 55%); }
+/* ---- спільний колір неба в інтерфейсі (--tint міняється разом із пейзажем; варіанти на вибір — data-tint на <html>) ----
+   a — рамки, підсвічені згори; b — серпанок у верхній частині блоків; c — і те, й те. --pbg — власне тло блока. */
+section.panel, aside.panel { --pbg: var(--panel); }
+.hm section.panel, body.route-home #colChat { --pbg: color-mix(in srgb, var(--panel) 84%, transparent); }
+:root[data-tint="a"] section.panel, :root[data-tint="a"] aside.panel, :root[data-tint="c"] section.panel, :root[data-tint="c"] aside.panel {
+  border: 1px solid transparent;
+  background: linear-gradient(var(--pbg), var(--pbg)) padding-box,
+    linear-gradient(180deg, color-mix(in srgb, var(--tint) 80%, var(--line)) 0%, var(--line) 46%, color-mix(in srgb, var(--tint) 16%, var(--line)) 100%) border-box;
+}
+:root[data-tint="b"] section.panel, :root[data-tint="b"] aside.panel {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--tint) 21%, var(--pbg)) 0, var(--pbg) 170px);
+}
+:root[data-tint="c"] section.panel, :root[data-tint="c"] aside.panel {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--tint) 21%, var(--pbg)) 0, var(--pbg) 170px) padding-box,
+    linear-gradient(180deg, color-mix(in srgb, var(--tint) 80%, var(--line)) 0%, var(--line) 46%, color-mix(in srgb, var(--tint) 16%, var(--line)) 100%) border-box;
+}
+:root[data-tint="a"] header .vswitch, :root[data-tint="a"] header .mini, :root[data-tint="a"] header .tools,
+:root[data-tint="c"] header .vswitch, :root[data-tint="c"] header .mini, :root[data-tint="c"] header .tools {
+  border-color: color-mix(in srgb, var(--tint) 55%, var(--line));
+}
+:root[data-tint="b"] header .vswitch, :root[data-tint="b"] header .mini, :root[data-tint="b"] header .tools,
+:root[data-tint="c"] header .vswitch, :root[data-tint="c"] header .mini, :root[data-tint="c"] header .tools {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--tint) 20%, var(--bg2)), var(--bg2));
+}
 /* Тонка смужка неба під шапкою — на кожній сторінці. */
+
 header::after { content: ''; position: absolute; left: 0; right: 0; top: 100%; height: 3px; pointer-events: none; background: linear-gradient(90deg, var(--sky1), var(--sky2)); }
 
 /* ---- «Обрій»: пейзаж на всю ширину вікна від самого верху головної (#sky в index.html, малюнок — static/obrii.svg):
@@ -189,6 +214,14 @@ main { position: relative; z-index: 1; }
 .ld-lamp { fill: #ffdf9c; opacity: var(--sky-lamp, 0); }
 .ld-lamp-g { fill: #ffc65c; opacity: .22; }
 .ld-l2 { fill: url(#ob-g2); }
+.ld-dam { fill: var(--lb); }
+.ld-dam-w { fill: var(--mist); opacity: .42; }
+.ld-l2b { fill: url(#ob-g2b); }
+.ld-rock2 { fill: var(--rock2); }
+.ld-rock2-l { fill: var(--rock2-l); opacity: .32; }
+.ld-tr3 { fill: var(--l3); }
+.ob-s2b { stop-color: var(--l2b); }
+.ob-s2bm { stop-color: var(--l2bm); }
 .ld-rock { fill: var(--rock); }
 .ld-rock-l { fill: var(--rock-l); opacity: .5; }
 .ld-l2r { fill: var(--l2); opacity: .3; }
