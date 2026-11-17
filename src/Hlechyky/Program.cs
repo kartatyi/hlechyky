@@ -76,6 +76,10 @@ builder.Services.AddSingleton<Hlechyky.Turn.TurnServer>();   // ретрансл
 builder.Services.AddHostedService(sp => sp.GetRequiredService<Hlechyky.Turn.TurnServer>());
 builder.Services.AddSingleton<RadioEngine>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<RadioEngine>());
+// 🌦 Погода (Weather.cs): небо на сайті й слово Глека — з Open-Meteo, питає лише сервер
+builder.Services.Configure<WeatherOptions>(cfg.GetSection("Weather"));
+builder.Services.AddSingleton<Weather>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<Weather>());
 builder.Services.AddSingleton<IOnAir>(sp => sp.GetRequiredService<RadioEngine>());
 builder.Services.AddSingleton<TrackBans>();
 builder.Services.AddSingleton<TrackCache>();
@@ -135,6 +139,8 @@ app.MapHlechyky();
 app.MapPeople();   // люди й статистика: картка людини, «Хто скільки», історія, свій гаманець, «Часто граємо»
 Litopys.Map(app);   // /api/stats/overview|games|music|person — «Літопис» для «Хто скільки» й профілю
 Tryvoga.Map(app);   // /api/tryvoga, /api/tryvoga/threats, POST /api/tryvoga/region — 🚨 Тривога
+Weather.Map(app);   // /api/weather — 🌦 погода обласного центру для неба на сайті
+
 app.MapHlechykyGames();
 app.MapHlechykyEconomy();
 app.MapHlechykyMcp();
