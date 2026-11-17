@@ -133,20 +133,37 @@ header .memenu .badge { position: static; }
   --sk0: #050a17; --sk1: #0b1830; --sk2: #1c2f4f; --l1: #162a36; --l2: #112325; --l3: #0e1d17; --l4: #0f1e18; --l4b: #0f1f18;
   --w0: #172a46; --w1: #0c1a20; --pad: #1a3c2b; --sky-orb: #ece8d6; --sky-halo: .16; --sky-oo: 1; --sky-stars: 1;
   --sky-cl: #37485f; --sky-cirrus: .22; --sky-deck: 0; --sky1: #0b1830; --sky2: #1c2f4f;
+  --l1m: #1d3a3f; --lb: #152b2c; --l2m: #1a3337; --l3m: #10211b; --rock: #2c3a38; --rock-l: #4c5a55; --mist: #5d7477; --sky-mist: .5; --end: #142a25;
+  --sky-lamp: 1;
+
 }
 /* Відблиск угорі сторінки був завжди зеленкуватий — тепер бере відтінок неба. Низ лишається нашим #0f1f18. */
 body { background: radial-gradient(1200px 600px at 20% -10%, color-mix(in srgb, var(--sky2) 30%, #1d3a2c) 0%, var(--bg) 55%); }
 /* Тонка смужка неба під шапкою — на кожній сторінці. */
 header::after { content: ''; position: absolute; left: 0; right: 0; top: 100%; height: 3px; pointer-events: none; background: linear-gradient(90deg, var(--sky1), var(--sky2)); }
 
-/* ---- «Обрій»: пейзаж на всю ширину вікна під шапкою головної (#sky в index.html, малюнок — static/obrii.svg) ----
+/* ---- «Обрій»: пейзаж на всю ширину вікна від самого верху головної (#sky в index.html, малюнок — static/obrii.svg):
+   Тетерів у Житомирі з підвісним мостом. Далеке розмите й тоне в тумані, чіткий лише передній план з очеретом. ----
    Небо в три кольори, далі шари землі: що далі, то ближче до кольору обрію (димка), що ближче — до нашого зеленого.
    Передній план сходить у колір сторінки, тож картки головної стоять просто на березі. */
 .sky-scene {
-  display: none; position: absolute; left: 0; right: 0; z-index: 0; height: var(--sky-h, 340px); overflow: hidden; pointer-events: none;
-  background: linear-gradient(180deg, var(--sk0) 0%, var(--sk1) 46%, var(--sk2) 76%);
+  display: none; position: absolute; left: 0; right: 0; top: 0; z-index: 0; overflow: hidden; pointer-events: none;
+  /* сцена починається від самого верху сторінки: шапка лежить у небі, а не над ним */
+  height: calc(var(--sky-h, 340px) + var(--hdr-h, 56px) + var(--bars-h, 0px));
+  background: linear-gradient(180deg, color-mix(in srgb, var(--bg) 62%, transparent) 0, transparent 120px),
+    linear-gradient(180deg, var(--sk0) 0%, var(--sk1) 46%, var(--sk2) 76%);
 }
 body.route-home .sky-scene { display: block; }
+/* Одна сторінка — один світ: шапка прозора, поки не прокрутили; під сторінкою — той самий берег (туман і очерет). */
+body.route-home { position: relative; background: var(--bg); }
+body.route-home header { background: transparent; border-bottom-color: transparent; -webkit-backdrop-filter: none; backdrop-filter: none; }
+body.route-home.scrolled header { background: rgba(15, 31, 24, .88); border-bottom-color: var(--line); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+.sky-end { display: none; position: absolute; left: 0; right: 0; bottom: 0; z-index: 0; height: 240px; overflow: hidden; pointer-events: none; }
+body.route-home .sky-end { display: block; }
+.sky-end svg { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
+.ld-emist { fill: url(#ob-ge); opacity: calc(var(--sky-mist) * .22); }
+.ld-emist2 { fill: var(--mist); opacity: calc(var(--sky-mist) * .1); }
+.ld-ereed { stroke: var(--end); fill: var(--end); }
 body.route-home header::after { display: none; }
 main { position: relative; z-index: 1; }
 .sky-scene > i { position: absolute; display: block; }
@@ -157,25 +174,45 @@ main { position: relative; z-index: 1; }
 }
 .sky-orb {
   left: var(--ol, 70%); bottom: var(--ob, 70%); width: 54px; height: 54px; margin: 0 0 -27px -27px; border-radius: 50%;
-  background: var(--sky-orb); opacity: var(--sky-oo); box-shadow: 0 0 30px 6px color-mix(in srgb, var(--sky-orb) 55%, transparent);
+  background: var(--sky-orb); opacity: var(--sky-oo); filter: blur(1.2px); box-shadow: 0 0 30px 6px color-mix(in srgb, var(--sky-orb) 55%, transparent);
 }
 .sky-art { position: absolute; inset: 0; }
 .sky-art svg { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
 .ld-stars { fill: #fff; opacity: var(--sky-stars); }
 .ld-cirrus { fill: var(--sky-cl); opacity: var(--sky-cirrus); }
 .ld-deck { fill: var(--sky-cl); opacity: calc(var(--sky-deck) * .55); }
-.ld-l1 { fill: var(--l1); }
-.ld-l2 { fill: var(--l2); }
-.ld-l3 { fill: var(--l3); }
+.ld-l1 { fill: url(#ob-g1); }
+.ld-br { fill: var(--lb); }
+.ld-br-c { fill: none; stroke: var(--lb); stroke-width: 1.5; }
+.ld-br-w { fill: none; stroke: var(--lb); stroke-width: .7; }
+/* ліхтарі на мосту: засвічуються, коли сутеніє */
+.ld-lamp { fill: #ffdf9c; opacity: var(--sky-lamp, 0); }
+.ld-lamp-g { fill: #ffc65c; opacity: .22; }
+.ld-l2 { fill: url(#ob-g2); }
+.ld-rock { fill: var(--rock); }
+.ld-rock-l { fill: var(--rock-l); opacity: .5; }
+.ld-l2r { fill: var(--l2); opacity: .3; }
+.ld-l3 { fill: url(#ob-g3); }
+.ld-st { fill: var(--l3); }
+/* туман між шарами: --k — частка для цього пасма, --sky-mist — скільки його зараз узагалі */
+.ld-mist { fill: url(#ob-gm); opacity: calc(var(--sky-mist) * var(--k, 1)); }
 .ld-l4 { fill: url(#ob-g4); }
 .ld-water { fill: url(#ob-gw); }
-.ld-glint { fill: none; stroke: var(--sk2); stroke-width: 1.6; stroke-linecap: round; opacity: .28; }
+.ld-glint { fill: none; stroke: var(--mist); stroke-width: 1.4; stroke-linecap: round; opacity: .2; }
 .ld-refl { fill: url(#ob-gr); transform: translateX(calc(var(--rx, 1400) * 1px)); }
 .ld-pad { fill: var(--pad); }
 .ld-fl { fill: #f4c542; }
 .ld-fl-c { fill: #a86a08; }
 .ld-fl-glow { fill: #f4c542; opacity: .16; }
 .ld-reed { stroke: var(--l4b); fill: var(--l4b); }
+.ob-s1 { stop-color: var(--l1); }
+.ob-s1m { stop-color: var(--l1m); }
+.ob-s2 { stop-color: var(--l2); }
+.ob-s2m { stop-color: var(--l2m); }
+.ob-s3 { stop-color: var(--l3); }
+.ob-s3m { stop-color: var(--l3m); }
+.ob-sm0 { stop-color: var(--mist); stop-opacity: 0; }
+.ob-sm1 { stop-color: var(--mist); stop-opacity: .8; }
 .ob-s4 { stop-color: var(--l4); }
 .ob-sbg { stop-color: var(--bg); }
 .ob-sw0 { stop-color: var(--w0); }
@@ -209,8 +246,9 @@ main { position: relative; z-index: 1; }
 header a.brand { color: inherit; text-decoration: none; }
 header a.brand:hover span { color: var(--accent); }
 body.route-home .hellobar { display: none; }
-body.route-home { --sky-h: 350px; --sky-fg: 150px; }
-body.route-home.preview { --sky-h: 560px; }
+body.route-home { --sky-h: 390px; --sky-fg: 150px; }
+#home { padding-bottom: 96px; }
+body.route-home.preview { --sky-h: 600px; }
 .hm { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
 .hm section.panel, body.route-home #colChat {
   background: color-mix(in srgb, var(--panel) 84%, transparent); border: 1px solid rgba(255, 255, 255, .07);
@@ -312,9 +350,17 @@ body.route-home.preview { --sky-h: 560px; }
 @media (max-width: 900px) {
   /* ▶ стоїть у картці ефіру — нижній міні-плеєр тут, як і на «Ефірі», зайвий */
   body.route-home { --mini-h: 0px; --sky-h: 250px; --sky-fg: 96px; }
-  body.route-home.preview { --sky-h: 530px; }
+  body.route-home.preview { --sky-h: 470px; }
   .sky-orb { width: 40px; height: 40px; margin: 0 0 -20px -20px; }
   .sky-halo { width: 420px; height: 420px; margin: 0 0 -210px -210px; }
+  /* видно лише середину пейзажу (міст) — очерет з країв підсуваємо в кадр */
+  .ld-reed-a { transform: translateX(400px); }
+  .ld-reed-b { transform: translateX(-400px); }
+  /* малюнок не росте разом зі сценою (у гостя вона висока): тримається низу, над ним — саме небо, і міст видно цілим */
+  .sky-art svg { top: auto; height: 290px; }
+
+  .sky-end { bottom: calc(var(--tabs-h) + var(--mini-h)); height: 170px; }
+  #home { padding-bottom: 60px; }
 
   body.route-home header .mini { display: none; }
   .hm, .hm-g2, .hm-g3 { gap: 12px; }

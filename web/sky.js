@@ -2,9 +2,12 @@
 // Де сонце, рахуємо самі (дата й координати, жодних сторонніх даних); хмари, дощ і сніг дає сервер (/api/weather:
 // він сам питає Open-Meteo раз на чверть години, браузери людей туди не ходять). Нема погоди — небо просто ясне.
 //
-// Малює все CSS (static/polyva.css) і пейзаж static/obrii.svg: небо в три кольори, чотири шари землі, що тануть у
-// димці, вода з відблиском. Звідси йдуть лише змінні на <html> — кольори (--sk0…--sk2, --l1…--l4, --w0, --w1, --pad),
-// світило (--sky-orb, --sky-halo, --sky-oo), зорі й хмари (--sky-stars, --sky-cirrus, --sky-deck) — і два атрибути:
+// Малює все CSS (static/polyva.css) і пейзаж static/obrii.svg — Тетерів у Житомирі: небо в три кольори, далекі
+// пагорби, підвісний міст, береги каньйону, вода з відблиском; усе далеке тоне в тумані, чіткий лише очерет спереду.
+// Унизу сторінки той самий берег закриває її (static/obrii-niz.svg). Звідси йдуть лише змінні на <html> — кольори
+// (--sk0…--sk2, --l1…--l4 і їхні «…m» у тумані, --lb міст, --rock, --w0, --w1, --pad, --mist, --end), скільки туману
+// (--sky-mist), ліхтарі на мосту (--sky-lamp), світило (--sky-orb, --sky-halo, --sky-oo), зорі й хмари
+// (--sky-stars, --sky-cirrus, --sky-deck) — і два атрибути:
 // data-sky (night | dawn | day | dusk) та data-wx (clear | cloud | fog | rain | snow | storm). Перераховуємо раз на
 // п'ять хвилин і коли вкладка вертається; кольори не анімуються зовсім.
 (function () {
@@ -16,8 +19,8 @@
   let pos = { alt: 0, ha: 0, day: true };
   const KYIV = { lat: 50.45, lon: 30.52 };
   const RAD = Math.PI / 180;
-  // Пейзаж намальовано в цих одиницях (viewBox 0 90 2000 470); вода — на 204 одиниці вище за низ.
-  const ART_W = 2000, ART_H = 470, HORIZON = 204;
+  // Пейзаж намальовано в цих одиницях (viewBox 0 90 2000 470); гребінь далеких пагорбів — на 236 одиниць вище за низ.
+  const ART_W = 2000, ART_H = 470, HORIZON = 236;
 
   // ---------------------------------------------------------------------------------------------
   // де сонце
@@ -51,17 +54,19 @@
   const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
   const BG = hex('#0f1f18');     // наш зелений: у нього сходить передній план, тож пейзаж виростає зі сторінки
   /// Чотири пори: небо згори донизу (верх, середина, обрій), зелень землі в цьому світлі, світило, сяйво довкола, зорі.
+  /// Небо тримається нашого зеленого: верх — глибокий синьо-зелений (у нього вростає шапка), обрій — теплий, до
+  /// нашого жовтого. mist — скільки туману лежить між шарами (уранці й увечері більше, опівдні менше, але є завжди).
   const PAL = {
-    night: { sk: ['#050a17', '#0b1830', '#1c2f4f'], g: '#0d1c16', orb: '#ece8d6', halo: 0.16, stars: 1 },
-    dawn: { sk: ['#24366a', '#7d6a95', '#f5ab7e'], g: '#1d3d2e', orb: '#ffd9a6', halo: 0.5, stars: 0.15 },
-    day: { sk: ['#2a80b5', '#69b5d2', '#cdebe2'], g: '#2e6c49', orb: '#fff7d6', halo: 0.42, stars: 0 },
-    dusk: { sk: ['#231e52', '#95436e', '#f8904b'], g: '#1d3428', orb: '#ffb469', halo: 0.55, stars: 0.1 },
+    night: { sk: ['#06100f', '#0c1d24', '#1d3a3f'], g: '#0d1c16', orb: '#ece8d6', halo: 0.16, stars: 1, mist: 0.5 },
+    dawn: { sk: ['#22384e', '#8a8098', '#f3c9a0'], g: '#24443a', orb: '#ffe2b4', halo: 0.5, stars: 0.15, mist: 1 },
+    day: { sk: ['#3f8aa0', '#93c4cc', '#e3efe0'], g: '#3a7355', orb: '#fff7d6', halo: 0.42, stars: 0, mist: 0.7 },
+    dusk: { sk: ['#182a44', '#85546f', '#f4b05e'], g: '#203a30', orb: '#ffc37a', halo: 0.55, stars: 0.1, mist: 0.9 },
   };
   const P = {};
-  for (const k of Object.keys(PAL)) P[k] = { sk: PAL[k].sk.map(hex), g: hex(PAL[k].g), orb: hex(PAL[k].orb), halo: PAL[k].halo, stars: PAL[k].stars };
+  for (const k of Object.keys(PAL)) P[k] = { sk: PAL[k].sk.map(hex), g: hex(PAL[k].g), orb: hex(PAL[k].orb), halo: PAL[k].halo, stars: PAL[k].stars, mist: PAL[k].mist };
   const blend = (a, b, t) => ({
     sk: a.sk.map((c, i) => mix(c, b.sk[i], t)), g: mix(a.g, b.g, t), orb: mix(a.orb, b.orb, t),
-    halo: a.halo + (b.halo - a.halo) * t, stars: a.stars + (b.stars - a.stars) * t,
+    halo: a.halo + (b.halo - a.halo) * t, stars: a.stars + (b.stars - a.stars) * t, mist: a.mist + (b.mist - a.mist) * t,
   });
 
   /// Погода з коду WMO (так її віддає Open-Meteo): що малювати й як назвати.
@@ -101,13 +106,24 @@
     const sk = c.sk.map((x, i) => mix(x, grey[i], cover));
     const g = mix(c.g, mix(c.g, hex('#222b2a'), 0.5), cover);
     const l4 = mix(g, BG, 0.74);
+    // Туман — колір обрію, розбілений; у «туман» за погодою його вдвічі більше.
+    const mist = mix(sk[2], hex('#ffffff'), 0.3 + 0.25 * t);
+    const l1 = mix(sk[2], g, 0.3), l2 = mix(sk[2], g, 0.7), l3 = mix(mix(g, BG, 0.34), sk[2], 0.1);
     pos = { alt: s.alt, ha: s.ha, top: s.top, day: s.alt > -4 };
     return {
       phase, kind: k,
       vars: {
         '--sk0': css(sk[0]), '--sk1': css(sk[1]), '--sk2': css(sk[2]),
-        // далі від нас — ближче до кольору обрію (повітряна димка), ближче — до нашого зеленого
-        '--l1': css(mix(sk[2], g, 0.42)), '--l2': css(mix(sk[2], g, 0.74)), '--l3': css(mix(g, BG, 0.38)), '--l4': css(l4), '--l4b': css(mix(l4, BG, 0.5)),
+        // далі від нас — ближче до кольору обрію (повітряна димка), ближче — до нашого зеленого; низ кожного шару
+        // тоне в тумані (…m), тож чітких країв у далечі нема
+        '--l1': css(l1), '--l1m': css(mix(l1, mist, 0.55)), '--lb': css(mix(sk[2], g, 0.62)),
+        '--l2': css(l2), '--l2m': css(mix(l2, mist, 0.5)),
+        // граніт: трохи тепліший і світліший за берег, але в тому ж світлі (уночі не світиться)
+        '--rock': css(mix(l2, mix(sk[2], hex('#b9a89a'), 0.5), 0.26)), '--rock-l': css(mix(l2, mix(sk[2], hex('#e6d8c8'), 0.5), 0.4)),
+        '--sky-lamp': clamp(1 - t * 2.4, 0, 1).toFixed(2),
+        '--l3': css(l3), '--l3m': css(mix(l3, mist, 0.16)), '--l4': css(l4), '--l4b': css(mix(l4, BG, 0.5)),
+        '--mist': css(mist), '--sky-mist': Math.min(1, c.mist * (k === 'fog' ? 1.8 : wet ? 1.25 : 1)).toFixed(2),
+        '--end': css(mix(BG, mix(g, sk[2], 0.35), 0.3 + 0.1 * t)),
         '--w0': css(mix(sk[2], sk[1], 0.3)), '--w1': css(mix(sk[1], g, 0.62)),
         '--pad': css(mix(g, hex('#3f9e68'), 0.25 + 0.25 * t)),
         '--sky-orb': css(pos.day ? c.orb : P.night.orb),
@@ -132,21 +148,25 @@
     const el = document.getElementById('sky');
     if (!el || !el.clientWidth) return;
     const W = el.clientWidth, H = el.clientHeight;
-    const s = Math.max(W / ART_W, H / ART_H);
+    // На телефоні малюнок нижчий за сцену (над ним — саме небо), тож масштаб беремо з малюнка, а не зі сцени.
+    const svg = el.querySelector('.sky-art svg');
+    const s = Math.max(W / ART_W, ((svg && svg.clientHeight) || H) / ART_H);
     const vis = W / s;                                        // скільки одиниць пейзажу видно в ширину
-    const left = el.dataset.anchor === 'left' ? 0 : (ART_W - vis) / 2;
+    const left = (ART_W - vis) / 2;
     const ha = pos.day ? pos.ha : Math.atan2(Math.sin(pos.ha - Math.PI), Math.cos(pos.ha - Math.PI));
     const alt = pos.day ? pos.alt : -pos.alt;
-    // Ліворуч у небі стоїть заголовок, праворуч на широкому екрані — балачки: світило ходить у проміжку між ними
-    // (на телефоні — правою половиною), щоб не сідати ні на текст, ні за панель.
-    const narrow = el.dataset.anchor === 'left';
-    const xu = left + vis * (narrow ? 0.88 + 0.05 * Math.sin(ha) : 0.52 + 0.16 * Math.sin(ha));
+    // Ліворуч у небі стоїть заголовок, праворуч на широкому екрані — балачки: світило ходить у проміжку між ними,
+    // якраз над мостом (на телефоні — правою половиною), щоб не сідати ні на текст, ні за панель.
+    const narrow = el.dataset.anchor === 'narrow';
+    const xu = left + vis * (narrow ? 0.8 + 0.08 * Math.sin(ha) : 0.52 + 0.16 * Math.sin(ha));
     el.style.setProperty('--ol', ((xu - left) * s).toFixed(1) + 'px');
     // Висота — частка від сьогоднішнього полудня: опівдні світило стоїть угорі сцени й улітку, і взимку (коли справжнє
-    // сонце ледь піднімається над обрієм і весь день лежало б на пагорбах). Нижче обрію — ховається за землю.
-    const horizon = (HORIZON - 14) * s, room = Math.max(60, H - horizon - 64);
+    // сонце ледь піднімається над обрієм і весь день лежало б на пагорбах). Нижче обрію — тоне в далеких пагорбах.
+    // Угорі сцени лежить шапка сайту — під неї світило не заходить.
+    const hdr = (document.querySelector('header') || {}).offsetHeight || 56;
+    const horizon = HORIZON * s, room = Math.max(60, H - horizon - hdr - 48);
     const up = alt >= 0 ? (alt / Math.max(12, pos.top || 40)) * room : alt * 3.3 * s;
-    el.style.setProperty('--ob', Math.min(H - 44, horizon + up).toFixed(1) + 'px');
+    el.style.setProperty('--ob', Math.min(H - hdr - 36, horizon + up).toFixed(1) + 'px');
     el.style.setProperty('--rx', xu.toFixed(1));
   }
 
@@ -192,21 +212,28 @@
     if (!el || el.dataset.ready) return;
     el.dataset.ready = '1';
     const narrow = window.matchMedia('(max-width: 900px)');
+    const end = document.getElementById('skyEnd');
     const anchor = () => {
-      // На телефоні показуємо лівий край пейзажу — там очерет, тополі й латаття; середина без них порожня.
-      el.dataset.anchor = narrow.matches ? 'left' : 'mid';
-      const svg = el.querySelector('svg');
+      // На телефоні видно лише середину пейзажу — міст; очерет з країв CSS підсуває до неї (.ld-reed-a / -b).
+      el.dataset.anchor = narrow.matches ? 'narrow' : 'mid';
+      const svg = end && end.querySelector('svg');
       if (svg) svg.setAttribute('preserveAspectRatio', narrow.matches ? 'xMinYMax slice' : 'xMidYMax slice');
       place();
     };
-    fetch('/static/obrii.svg').then((r) => (r.ok ? r.text() : '')).then((t) => {
+    const art = (url, into) => fetch(url).then((r) => (r.ok ? r.text() : '')).then((t) => {
       if (!t) return;
-      el.querySelector('.sky-art').innerHTML = t;
+      into.innerHTML = t;
       anchor();
-    }).catch(() => { /* без пейзажу лишається небо-градієнт */ });
+    }).catch(() => { /* без малюнка лишається небо-градієнт */ });
+    art('/static/obrii.svg', el.querySelector('.sky-art'));
+    if (end) art('/static/obrii-niz.svg', end);
     narrow.addEventListener?.('change', anchor);
     if (window.ResizeObserver) new ResizeObserver(place).observe(el);
     anchor();
+    // Шапка на головній прозора — лежить просто в небі; щойно сторінку прокрутили, вертає собі тло.
+    const scrolled = () => document.body.classList.toggle('scrolled', window.scrollY > 16);
+    window.addEventListener('scroll', scrolled, { passive: true });
+    scrolled();
   }
 
   window.HSky = {

@@ -64,6 +64,8 @@ tools/*
 tools/osm/__pycache__/
 # заміри екранів ігор перед деплоєм (fitcheck.py + база base/) — у гіті
 !tools/fitcheck/
+# генератор пейзажу головної «Обрій» (web/static/obrii.svg, obrii-niz.svg)
+!tools/obrii/
 tools/fitcheck/__pycache__/
 # build output
 bin/

@@ -53,6 +53,8 @@
 <link rel="stylesheet" href="/static/polyva.css">
 </head>
 <body class="route-home">
+<!-- «Обрій»: пейзаж головної. Стоїть перед шапкою, бо починається від самого верху сторінки — шапка лежить у небі. -->
+<div id="sky" class="sky-scene" aria-hidden="true"><i class="sky-halo"></i><i class="sky-orb"></i><div class="sky-art"></div><i class="sky-fall"></i><i class="sky-fog"></i></div>
 <header>
   <!-- Знак веде на головну — «Зараз у Глечиках» (web/home.js). -->
   <a class="brand" href="#home" title="Головна — що зараз у Глечиках"><svg class="brand-mk" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="31" fill="#173a2a"/><g class="mk-rays" stroke="#e2b233" stroke-width="4.4" stroke-linecap="round"><line x1="32.00" y1="10.00" x2="32.00" y2="5.00"/><line x1="43.00" y1="12.95" x2="45.50" y2="8.62"/><line x1="51.05" y1="21.00" x2="55.38" y2="18.50"/><line x1="54.00" y1="32.00" x2="59.00" y2="32.00"/><line x1="51.05" y1="43.00" x2="55.38" y2="45.50"/><line x1="43.00" y1="51.05" x2="45.50" y2="55.38"/><line x1="32.00" y1="54.00" x2="32.00" y2="59.00"/><line x1="21.00" y1="51.05" x2="18.50" y2="55.38"/><line x1="12.95" y1="43.00" x2="8.62" y2="45.50"/><line x1="10.00" y1="32.00" x2="5.00" y2="32.00"/><line x1="12.95" y1="21.00" x2="8.62" y2="18.50"/><line x1="21.00" y1="12.95" x2="18.50" y2="8.62"/></g><g transform="translate(32 32.3) scale(.62)" fill="#f4c542"><circle cx="0" cy="-12.5" r="12.3"/><circle cx="11.89" cy="-3.86" r="12.3"/><circle cx="7.35" cy="10.11" r="12.3"/><circle cx="-7.35" cy="10.11" r="12.3"/><circle cx="-11.89" cy="-3.86" r="12.3"/><circle r="12"/></g><circle cx="32" cy="32" r="4.4" fill="#8a5a0c"/></svg><span id="siteName">Глечики</span></a>
@@ -129,7 +131,6 @@
 
 <!-- 🌅 «Обрій»: пейзаж на всю ширину під шапкою головної (web/sky.js вставляє static/obrii.svg і ставить кольори за часом
      і погодою). Стоїть без місця в потоці, тож зміст головної лягає просто на нього. -->
-<div id="sky" class="sky-scene" aria-hidden="true"><i class="sky-halo"></i><i class="sky-orb"></i><div class="sky-art"></div><i class="sky-fall"></i><i class="sky-fog"></i></div>
 <main>
 
   <div class="col" id="colMain">
@@ -276,6 +277,8 @@
     </form>
   </aside>
 </main>
+<div id="skyEnd" class="sky-end" aria-hidden="true"></div>
+
 
 <nav class="mtabs" aria-label="Розділи">
   <button data-route="efir" class="on"><span class="ico">📻</span>Ефір</button>
