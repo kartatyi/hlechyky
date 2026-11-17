@@ -38,8 +38,8 @@ public sealed class Khata : Game
     /// <summary>Рядок розкриття: чиє число, у скільки разів воно від правди (1 — точно) і бали.</summary>
     sealed record Row(int Seat, double Value, double Ratio, int Points);
 
-    /// <summary>Рядок підсумку партії: квартира, правда й найкраще число.</summary>
-    sealed record Recap(string City, string Unit, int Price, string Photo, int Best, double? Value, int Points);
+    /// <summary>Рядок підсумку партії: квартира, правда й найкраще число; для стороннього оголошення — посилання на нього.</summary>
+    sealed record Recap(string City, string Unit, string Per, int Price, string Photo, string? Link, int Best, double? Value, int Points);
 
     public override GameInfo Info { get; } = new(
         GameId, "Здам хату", "«Здам хату»", GameGroup.Party, 1, MaxSeats,
@@ -50,7 +50,7 @@ public sealed class Khata : Game
             new GameOption("seconds", "Час на відповідь", [.. SecondChoices.Select(n => (Str(n), $"{n} с"))], Str(AskSeconds)),
             new GameOption("region", "Міста", KhataRegions.Choices, KhataRegions.Any, Multi: true),
         ],
-        Hint: "Бачиш фото квартири й знаєш лише місто — вгадай, скільки коштує оренда за місяць. Що ближче — то більше балів, до 1000 за квартиру");
+        Hint: "Справжні оголошення: бачиш фото житла й знаєш лише місто — вгадай, скільки воно коштує за місяць чи за ніч. Що ближче — то більше балів, до 1000 за квартиру");
 
     static string Str(int n) => n.ToString(CultureInfo.InvariantCulture);
 
@@ -102,7 +102,7 @@ public sealed class Khata : Game
         (_seen ??= GameSeen.Of(Ctx.Services)).Prefetch(GameId);
         if (Store is not { } store || store.Live.Count == 0)
             return "У банку ще нема жодної квартири — додай першу кнопкою «🏠 Додати квартиру»";
-        return store.Fit(_regions).Count == 0 ? "Для цих міст квартир у банку ще нема — обери «Усі міста» або додай свою" : null;
+        return store.CountFit(_regions) == 0 ? "Для цих міст квартир у банку ще нема — обери «Усі міста» або додай свою" : null;
     }
 
     public override void Start()
@@ -150,9 +150,23 @@ public sealed class Khata : Game
             (pool[i], pool[j]) = (pool[j], pool[i]);
         }
         var table = GameSeen.Table(Ctx, MaxSeats);
-        var ordered = GameSeen.Order(pool, f => f.Key, _seen!.Peek(GameId, table));
         // OrderBy стабільний: порядок «свіжості» всередині обох груп лишається.
-        return [.. ordered.OrderBy(f => table.Contains(GameSeen.NickKey(f.Author)) ? 1 : 0).Take(_count)];
+        var ordered = GameSeen.Order(pool, f => f.Key, _seen!.Peek(GameId, table))
+            .OrderBy(f => table.Contains(GameSeen.NickKey(f.Author)) ? 1 : 0).ToList();
+        // Не більше однієї квартири з міста на партію, поки міст вистачає: п'ять Парижів поспіль — це вже не гра, а завчання.
+        var picked = new List<KhataFlat>(_count);
+        var cities = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var f in ordered)
+        {
+            if (picked.Count == _count) break;
+            if (cities.Add(f.City)) picked.Add(f);
+        }
+        foreach (var f in ordered)
+        {
+            if (picked.Count == _count) break;
+            if (!picked.Contains(f)) picked.Add(f);
+        }
+        return picked;
     }
 
     void Open(DateTimeOffset now)
@@ -294,7 +308,7 @@ public sealed class Khata : Game
             // Черепки — лише за квартири, які бачиш уперше й не сам додав: напам'ять і зі своїх не нафармиш.
             if (_seenBefore[r.Seat] is { } seen && !seen.Contains(flat.Key) && !Owns(r.Seat, flat)) _fresh[r.Seat] += r.Points;
         }
-        _recap.Add(new Recap(flat.City, flat.Unit, flat.Price, KhataStore.UrlPrefix + flat.Photos[0],
+        _recap.Add(new Recap(flat.City, flat.Unit, flat.Per, flat.Price, flat.Thumb, flat.Link,
             rows.Count == 0 ? -1 : rows[0].Seat, rows.Count == 0 ? null : rows[0].Value, rows.Count == 0 ? 0 : rows[0].Points));
         _reveal = rows;
         _say = Flavor(rows);
@@ -350,6 +364,8 @@ public sealed class Khata : Game
             phase = _phase,
             city = shown ? flat!.City : "",
             unit = shown ? flat!.Unit : null,
+            // за місяць (оренда) чи за ніч (Airbnb) — стоїть біля поля поруч зі знаком валюти
+            per = shown ? flat!.Per : null,
             photos = shown ? flat!.Urls.ToArray() : [],
             endsAt = _endsAt,
             seconds = _seconds,
@@ -362,6 +378,11 @@ public sealed class Khata : Game
             {
                 price = flat.Price,
                 by = flat.Author,
+                // Стороннє оголошення: звідки воно, що це за житло (до відповіді цього не видно) й посилання на нього.
+                id = flat.Id,
+                source = flat.Source,
+                about = flat.About,
+                link = flat.Link,
                 say = _say,
                 rows = _reveal.Select(r => new { seat = r.Seat, value = r.Value, ratio = r.Ratio, points = r.Points }).ToArray(),
             },
@@ -376,11 +397,11 @@ public sealed class Khata : Game
             },
             recap = _phase != PhaseDone ? null : _recap.Select(r => new
             {
-                city = r.City, unit = r.Unit, price = r.Price, photo = r.Photo,
+                city = r.City, unit = r.Unit, per = r.Per, price = r.Price, photo = r.Photo, link = r.Link,
                 best = r.Best >= 0 ? r.Best : (int?)null, value = r.Value, points = r.Points,
             }).ToArray(),
             // Скільки квартир у банку для обраних міст і всього — для лобі.
-            bank = new { fit = store?.Fit(_regions).Count ?? 0, total = store?.Live.Count ?? 0 },
+            bank = new { fit = store?.CountFit(_regions) ?? 0, total = store?.Live.Count ?? 0 },
         };
     }
 

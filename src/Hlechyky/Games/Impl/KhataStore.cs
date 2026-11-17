@@ -37,28 +37,59 @@ public static class KhataRegions
 }
 
 /// <summary>
-/// Квартира банку «Здам хату»: місто (єдине, що гравець бачить текстом), ціна оренди за місяць, 1–5 фото (імена файлів у
-/// <c>data/khata</c>), хто й коли додав і стан: <c>pending</c> — чекає на схвалення, <c>ok</c> — у грі.
+/// Звідки квартира: <c>own</c> — додав гравець (фото лежать у нас), решта — справжні оголошення зі сторонніх джерел.
+/// Їхні фото ми не копіюємо: гравець бачить їх просто з сайту-джерела, а на розкритті — посилання на саме оголошення.
+/// </summary>
+public static class KhataSources
+{
+    public const string Own = "own";
+    /// <summary>Відкритий набір Inside Airbnb (CC BY 4.0): ціна за ніч, одне фото-обкладинка.</summary>
+    public const string Airbnb = "airbnb";
+
+    public static string Label(string source) => source == Airbnb ? "Airbnb" : "";
+
+    /// <summary>Адреса фото для показу: сервер фото Airbnb сам віддає зменшений варіант (оригінали важать по 2–14 МБ).</summary>
+    public static string Show(string source, string photo) => source == Airbnb ? photo + "?im_w=960" : photo;
+
+    /// <summary>Мініатюра — для списку «Як це було» й перевірки, чи фото ще живе.</summary>
+    public static string Thumb(string source, string photo) => source == Airbnb ? photo + "?im_w=320" : photo;
+}
+
+/// <summary>
+/// Квартира банку «Здам хату»: місто (єдине, що гравець бачить текстом), ціна, фото, хто й коли додав і стан:
+/// <c>pending</c> — чекає на схвалення, <c>ok</c> — у грі. Своя (<see cref="KhataSources.Own"/>) — фото це імена файлів у
+/// <c>data/khata</c>, ціна за місяць. Зовнішня — фото це адреси на сайті-джерелі, <see cref="Link"/> — саме оголошення,
+/// <see cref="About"/> — що це за житло (показуємо лише після відповіді), <see cref="Per"/> — за місяць чи за ніч.
 /// </summary>
 public sealed record KhataFlat(long Id, string Region, string City, int Price, IReadOnlyList<string> Photos, string Author,
-    DateTimeOffset At, string Status)
+    DateTimeOffset At, string Status, string Source = KhataSources.Own, string ExtId = "", string? Link = null,
+    string Per = KhataFlat.Month, string? About = null)
 {
     public const string Pending = "pending", Ok = "ok";
+    public const string Month = "month", Night = "night";
     /// <summary>Ключ для пам'яті «хто що бачив» (<see cref="GameSeen"/>).</summary>
     public string Key => "f" + Id.ToString(CultureInfo.InvariantCulture);
     public string Unit => KhataRegions.Unit(Region);
     public bool Live => Status == Ok;
-    public IEnumerable<string> Urls => Photos.Select(f => KhataStore.UrlPrefix + f);
+    public bool External => Source != KhataSources.Own;
+    public IEnumerable<string> Urls => External
+        ? Photos.Select(p => KhataSources.Show(Source, p))
+        : Photos.Select(f => KhataStore.UrlPrefix + f);
+    public string Thumb => External ? KhataSources.Thumb(Source, Photos[0]) : KhataStore.UrlPrefix + Photos[0];
 }
+
+/// <summary>Оголошення зі стороннього джерела — те, що імпорт віддає банку.</summary>
+public sealed record KhataExternal(string ExtId, string Region, string City, int Price, string Per, IReadOnlyList<string> Photos,
+    string Link, string? About);
 
 /// <summary>Відповідь на дію з квартирою: чи вдалось, що сказати людині, і сама квартира.</summary>
 public sealed record KhataReply(bool Ok, string Message, KhataFlat? Flat = null);
 
 /// <summary>
-/// Банк квартир «Здам хату» (specs/khata.md): його наповнюють самі гравці — фото, місто й ціна; розробник схвалює, і
-/// лише тоді квартира йде в гру. Фото стискає браузер (сервер звіряє магічні байти, вагу й розміри), лежать вони в
-/// <c>data/khata</c> під іменем-хешем вмісту. Гра читає банк під замком кімнати, тому готові квартири — знімок у пам'яті
-/// (<see cref="Live"/>); база й диск — лише з HTTP. Без бази (тести) — та сама логіка в пам'яті.
+/// Банк квартир «Здам хату» (specs/khata.md). Дві частини в одній таблиці: справжні оголошення зі сторонніх джерел
+/// (<see cref="Import"/>; фото лишаються на сайті-джерелі) і квартири, які додали самі гравці (фото стискає браузер,
+/// лежать у <c>data/khata</c> під іменем-хешем; розробник схвалює). Гра читає банк під замком кімнати, тому готові
+/// квартири — знімок у пам'яті (<see cref="Live"/>); база й диск — лише з HTTP і фону. Без бази (тести) — те саме в пам'яті.
 /// </summary>
 public sealed partial class KhataStore
 {
@@ -81,6 +112,16 @@ public sealed partial class KhataStore
           status TEXT NOT NULL DEFAULT 'pending', removed INTEGER NOT NULL DEFAULT 0);
         """;
 
+    /// <summary>Колонки, що з'явились разом зі сторонніми джерелами: старій таблиці їх додаємо, нова народжується з ними.</summary>
+    static readonly (string Name, string Ddl)[] Added =
+    [
+        ("source", "TEXT NOT NULL DEFAULT 'own'"),
+        ("ext_id", "TEXT NOT NULL DEFAULT ''"),
+        ("link", "TEXT"),
+        ("per", "TEXT NOT NULL DEFAULT 'month'"),
+        ("about", "TEXT"),
+    ];
+
     [GeneratedRegex("^[0-9a-f]{20}\\.(jpg|png|webp)$")]
     private static partial Regex FileName();
 
@@ -89,9 +130,14 @@ public sealed partial class KhataStore
     readonly IClock _clock;
     readonly ILogger? _log;
     readonly object _gate = new();
-    List<KhataFlat> _all = [];     // усі незняті: і схвалені, і ті, що чекають
+    List<KhataFlat> _all = [];     // усі незняті: зовнішні, свої схвалені й ті, що чекають
+    /// <summary>Зняті зовнішні оголошення («джерело:id»): повторний імпорт їх не воскрешає.</summary>
+    readonly HashSet<string> _gone = new(StringComparer.Ordinal);
     long _memId;
+    long _cursor;
     volatile KhataFlat[] _live = [];
+    volatile IReadOnlyDictionary<string, int> _byRegion = new Dictionary<string, int>();
+    volatile IReadOnlyDictionary<string, int> _bySource = new Dictionary<string, int>();
 
     /// <summary>Нарахувати автору за схвалену квартиру (нік, скільки, ref). Ставить DI з Economy; тести — свою.</summary>
     public Action<string, int, string>? Reward { get; set; }
@@ -109,16 +155,29 @@ public sealed partial class KhataStore
                 _db.With(c =>
                 {
                     Exec(c, Schema);
+                    var have = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    using (var info = Cmd(c, "PRAGMA table_info(khata_flats)"))
+                    using (var r = info.ExecuteReader())
+                        while (r.Read()) have.Add(r.GetString(1));
+                    foreach (var (name, ddl) in Added)
+                        if (!have.Contains(name)) Exec(c, $"ALTER TABLE khata_flats ADD COLUMN {name} {ddl}");
+                    Exec(c, "CREATE INDEX IF NOT EXISTS khata_flats_ext ON khata_flats(source, ext_id)");
+
                     var list = new List<KhataFlat>();
-                    using var cmd = Cmd(c, "SELECT id, region, city, price, photos, author, at, status FROM khata_flats WHERE removed = 0 ORDER BY id");
-                    using var r = cmd.ExecuteReader();
-                    while (r.Read())
-                    {
-                        var photos = Files(r.GetString(4));
-                        if (photos.Count == 0) continue;
-                        list.Add(new KhataFlat(r.GetInt64(0), r.GetString(1), r.GetString(2), r.GetInt32(3), photos, r.GetString(5),
-                            Ts(r.GetString(6)), r.GetString(7)));
-                    }
+                    using (var cmd = Cmd(c, "SELECT id, region, city, price, photos, author, at, status, source, ext_id, link, per, about FROM khata_flats WHERE removed = 0 ORDER BY id"))
+                    using (var r = cmd.ExecuteReader())
+                        while (r.Read())
+                        {
+                            var source = r.GetString(8);
+                            var photos = Files(r.GetString(4), source != KhataSources.Own);
+                            if (photos.Count == 0) continue;
+                            list.Add(new KhataFlat(r.GetInt64(0), r.GetString(1), r.GetString(2), r.GetInt32(3), photos, r.GetString(5),
+                                Ts(r.GetString(6)), r.GetString(7), source, r.GetString(9), r.IsDBNull(10) ? null : r.GetString(10),
+                                r.GetString(11), r.IsDBNull(12) ? null : r.GetString(12)));
+                        }
+                    using (var cmd = Cmd(c, "SELECT source, ext_id FROM khata_flats WHERE removed = 1 AND source <> 'own'"))
+                    using (var r = cmd.ExecuteReader())
+                        while (r.Read()) _gone.Add(GoneKey(r.GetString(0), r.GetString(1)));
                     _all = list;
                 });
             }
@@ -130,11 +189,24 @@ public sealed partial class KhataStore
         Publish();
     }
 
-    void Publish() => _live = [.. _all.Where(f => f.Live)];
+    static string GoneKey(string source, string extId) => source + ":" + extId;
 
-    static List<string> Files(string json)
+    void Publish()
     {
-        try { return [.. (JsonSerializer.Deserialize<string[]>(json) ?? []).Where(f => FileName().IsMatch(f))]; }
+        var live = _all.Where(f => f.Live).ToArray();
+        _byRegion = live.GroupBy(f => f.Region, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.Count(), StringComparer.Ordinal);
+        _bySource = live.GroupBy(f => f.Source, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.Count(), StringComparer.Ordinal);
+        _live = live;
+    }
+
+    /// <summary>Фото з рядка бази: свої — лише імена наших файлів, зовнішні — лише адреси https.</summary>
+    static List<string> Files(string json, bool external)
+    {
+        try
+        {
+            return [.. (JsonSerializer.Deserialize<string[]>(json) ?? [])
+                .Where(f => external ? f.StartsWith("https://", StringComparison.Ordinal) : FileName().IsMatch(f))];
+        }
         catch (JsonException) { return []; }
     }
 
@@ -142,15 +214,159 @@ public sealed partial class KhataStore
     // для гри (під замком кімнати: лише пам'ять)
     // =========================================================================================
 
-    /// <summary>Схвалені квартири — те, з чого гра набирає партію.</summary>
+    /// <summary>Квартири в грі — те, з чого вона набирає партію.</summary>
     public IReadOnlyList<KhataFlat> Live => _live;
 
-    /// <summary>Схвалені квартири обраних регіонів (null — усі).</summary>
+    /// <summary>Квартири обраних регіонів (null — усі).</summary>
     public List<KhataFlat> Fit(IReadOnlySet<string>? regions) =>
         [.. _live.Where(f => regions is null || regions.Contains(f.Region))];
 
+    /// <summary>Скільки їх — без копіювання списку: вид кімнати питає це на кожну розсилку.</summary>
+    public int CountFit(IReadOnlySet<string>? regions) =>
+        regions is null ? _live.Length : regions.Sum(r => _byRegion.GetValueOrDefault(r));
+
+    /// <summary>Скільки квартир у грі з кожного регіону й з кожного джерела.</summary>
+    public IReadOnlyDictionary<string, int> ByRegion => _byRegion;
+    public IReadOnlyDictionary<string, int> BySource => _bySource;
+
     // =========================================================================================
-    // HTTP
+    // сторонні джерела
+    // =========================================================================================
+
+    /// <summary>
+    /// Прийняти оголошення зі стороннього джерела: нові — додати (одразу в грі), знайомі — оновити, якщо щось змінилось.
+    /// Зняті раніше (фото зникло, розробник прибрав) не воскресають. Старих, яких у новому наборі нема, не чіпаємо:
+    /// оголошення могли зняти, а квартира з ціною на той день лишається загадкою, поки живе її фото.
+    /// </summary>
+    public (int Added, int Updated, int Skipped) Import(string source, IReadOnlyCollection<KhataExternal> items)
+    {
+        if (source == KhataSources.Own || string.IsNullOrEmpty(source)) return (0, 0, items.Count);
+        var at = _clock.UtcNow;
+        var label = KhataSources.Label(source);
+        lock (_gate)
+        {
+            var known = _all.Where(f => f.Source == source).ToDictionary(f => f.ExtId, StringComparer.Ordinal);
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            var fresh = new List<KhataExternal>();
+            var changed = new List<KhataFlat>();
+            var skipped = 0;
+            foreach (var it in items)
+            {
+                var city = CleanCity(it.City);
+                var ok = !string.IsNullOrEmpty(it.ExtId) && KhataRegions.Known(it.Region) && city is not null
+                    && it.Price is >= 1 and <= MaxPrice && it.Per is KhataFlat.Month or KhataFlat.Night
+                    && it.Photos.Count is >= 1 and <= MaxPhotos * 4 && it.Photos.All(p => p.StartsWith("https://", StringComparison.Ordinal))
+                    && it.Link.StartsWith("https://", StringComparison.Ordinal);
+                if (!ok || _gone.Contains(GoneKey(source, it.ExtId)) || !seen.Add(it.ExtId)) { skipped++; continue; }
+                var clean = it with { City = city! };
+                if (!known.TryGetValue(it.ExtId, out var was)) fresh.Add(clean);
+                else if (was.Region != clean.Region || was.City != clean.City || was.Price != clean.Price || was.Per != clean.Per
+                    || was.Link != clean.Link || was.About != clean.About || !was.Photos.SequenceEqual(clean.Photos))
+                    changed.Add(was with { Region = clean.Region, City = clean.City, Price = clean.Price, Per = clean.Per,
+                        Link = clean.Link, About = clean.About, Photos = clean.Photos });
+            }
+
+            var ids = new long[fresh.Count];
+            if (_db is null) for (var i = 0; i < ids.Length; i++) ids[i] = ++_memId;
+            else
+            {
+                try
+                {
+                    _db.With(c =>
+                    {
+                        Exec(c, "BEGIN");
+                        try
+                        {
+                            for (var i = 0; i < fresh.Count; i++)
+                            {
+                                var f = fresh[i];
+                                Exec(c, """
+                                    INSERT INTO khata_flats(region, city, price, photos, author, author_key, at, status, source, ext_id, link, per, about)
+                                    VALUES($r, $c, $p, $ph, $a, $k, $at, 'ok', $s, $e, $l, $per, $ab)
+                                    """,
+                                    ("$r", f.Region), ("$c", f.City), ("$p", f.Price), ("$ph", JsonSerializer.Serialize(f.Photos)), ("$a", label),
+                                    ("$k", source), ("$at", Iso(at)), ("$s", source), ("$e", f.ExtId), ("$l", f.Link), ("$per", f.Per), ("$ab", f.About));
+                                using var cmd = Cmd(c, "SELECT last_insert_rowid()");
+                                ids[i] = (long)cmd.ExecuteScalar()!;
+                            }
+                            foreach (var f in changed)
+                                Exec(c, "UPDATE khata_flats SET region = $r, city = $c, price = $p, photos = $ph, link = $l, per = $per, about = $ab WHERE id = $id",
+                                    ("$r", f.Region), ("$c", f.City), ("$p", f.Price), ("$ph", JsonSerializer.Serialize(f.Photos)), ("$l", f.Link),
+                                    ("$per", f.Per), ("$ab", f.About), ("$id", f.Id));
+                            Exec(c, "COMMIT");
+                        }
+                        catch
+                        {
+                            Exec(c, "ROLLBACK");
+                            throw;
+                        }
+                    });
+                }
+                catch (Exception ex)
+                {
+                    _log?.LogWarning(ex, "khata: оголошення з {Source} не записались", source);
+                    return (0, 0, items.Count);
+                }
+            }
+
+            var byId = changed.ToDictionary(f => f.Id);
+            var next = new List<KhataFlat>(_all.Count + fresh.Count);
+            foreach (var f in _all) next.Add(byId.GetValueOrDefault(f.Id, f));
+            for (var i = 0; i < fresh.Count; i++)
+            {
+                var f = fresh[i];
+                next.Add(new KhataFlat(ids[i], f.Region, f.City, f.Price, f.Photos, label, at, KhataFlat.Ok, source, f.ExtId, f.Link, f.Per, f.About));
+            }
+            _all = next;
+            Publish();
+            return (fresh.Count, changed.Count, skipped);
+        }
+    }
+
+    /// <summary>Наступне зовнішнє оголошення на перевірку «чи фото ще живе» — по колу.</summary>
+    public KhataFlat? NextToCheck()
+    {
+        var live = _live;
+        KhataFlat? first = null, next = null;
+        foreach (var f in live)
+        {
+            if (!f.External) continue;
+            first ??= f;
+            if (f.Id > Interlocked.Read(ref _cursor)) { next = f; break; }
+        }
+        var pick = next ?? first;
+        if (pick is not null) Interlocked.Exchange(ref _cursor, pick.Id);
+        return pick;
+    }
+
+    /// <summary>Зовнішнє оголошення за адресою його фото (так, як її бачить гравець) — для скарги «фото не відкрилось».</summary>
+    public KhataFlat? ByPhoto(string? url)
+    {
+        if (string.IsNullOrEmpty(url)) return null;
+        var cut = url.IndexOf('?');
+        var bare = cut < 0 ? url : url[..cut];
+        foreach (var f in _live)
+            if (f.External && f.Photos.Contains(bare)) return f;
+        return null;
+    }
+
+    /// <summary>Зняти зовнішнє оголошення (фото зникло або розробник прибрав). Повторний імпорт його не поверне.</summary>
+    public bool Drop(long id)
+    {
+        lock (_gate)
+        {
+            var flat = _all.FirstOrDefault(f => f.Id == id && f.External);
+            if (flat is null) return false;
+            _db?.Exec("UPDATE khata_flats SET removed = 1 WHERE id = $id", ("$id", id));
+            _gone.Add(GoneKey(flat.Source, flat.ExtId));
+            _all = [.. _all.Where(f => f.Id != id)];
+            Publish();
+            return true;
+        }
+    }
+
+    // =========================================================================================
+    // HTTP: квартири від гравців
     // =========================================================================================
 
     /// <summary>Місто: без зайвих пробілів і керівних символів. Порожнє чи задовге — null.</summary>
@@ -192,8 +408,8 @@ public sealed partial class KhataStore
         var key = Auth.NickKey(nick);
         lock (_gate)
         {
-            if (_all.Any(f => f.Photos.Any(files.Contains))) return new(false, "Таке фото вже є в банку — схоже, цю квартиру вже додали");
-            if (!admin && _all.Count(f => !f.Live && Auth.NickKey(f.Author) == key) >= MaxPending)
+            if (_all.Any(f => !f.External && f.Photos.Any(files.Contains))) return new(false, "Таке фото вже є в банку — схоже, цю квартиру вже додали");
+            if (!admin && _all.Count(f => !f.External && !f.Live && Auth.NickKey(f.Author) == key) >= MaxPending)
                 return new(false, $"У тебе вже {MaxPending} квартир чекає на схвалення — дочекайся, поки їх переглянуть");
             try
             {
@@ -251,7 +467,7 @@ public sealed partial class KhataStore
     {
         lock (_gate)
         {
-            var i = _all.FindIndex(f => f.Id == id);
+            var i = _all.FindIndex(f => f.Id == id && !f.External);
             if (i < 0) return new(false, "Такої квартири нема");
             if (_all[i].Live) return new(true, "Вона вже в грі", _all[i]);
             var flat = _all[i] with { Status = KhataFlat.Ok };
@@ -277,7 +493,7 @@ public sealed partial class KhataStore
         if (price is < 1 or > MaxPrice) return new(false, "Ціна — додатне число: скільки коштує оренда за місяць");
         lock (_gate)
         {
-            var i = _all.FindIndex(f => f.Id == id);
+            var i = _all.FindIndex(f => f.Id == id && !f.External);
             if (i < 0) return new(false, "Такої квартири нема");
             var flat = _all[i] with { Region = region!, City = city, Price = (int)price };
             _db?.Exec("UPDATE khata_flats SET region = $r, city = $c, price = $p WHERE id = $id", ("$r", region), ("$c", city), ("$p", price), ("$id", id));
@@ -287,20 +503,26 @@ public sealed partial class KhataStore
         }
     }
 
-    /// <summary>Зняти квартиру: автор — свою, розробник — будь-яку. Рядок позначено, фото з диска геть.</summary>
+    /// <summary>
+    /// Зняти квартиру: автор — свою, розробник — будь-яку (і зовнішнє оголошення теж — скажімо, з недоречним фото).
+    /// Рядок позначено, свої фото з диска геть.
+    /// </summary>
     public KhataReply Remove(long id, string nick, bool account, bool admin)
     {
         lock (_gate)
         {
             var flat = _all.FirstOrDefault(f => f.Id == id);
             if (flat is null) return new(false, "Такої квартири нема");
+            if (flat.External)
+                return !admin ? new(false, "Зняти можна лише свою квартиру")
+                    : Drop(id) ? new(true, $"Оголошення з {flat.Author} прибрано з гри", flat) : new(false, "Такої квартири нема");
             var own = account && Auth.NickKey(flat.Author) == Auth.NickKey(nick);
             if (!admin && !own) return new(false, "Зняти можна лише свою квартиру");
             _db?.Exec("UPDATE khata_flats SET removed = 1 WHERE id = $id", ("$id", id));
             _all = [.. _all.Where(f => f.Id != id)];
             Publish();
             foreach (var file in flat.Photos)
-                if (!_all.Any(f => f.Photos.Contains(file))) TryDelete(file);
+                if (!_all.Any(f => !f.External && f.Photos.Contains(file))) TryDelete(file);
             return new(true, own ? "Квартиру знято" : $"Квартиру від {flat.Author} знято", flat);
         }
     }
@@ -309,13 +531,13 @@ public sealed partial class KhataStore
     public List<KhataFlat> Mine(string nick)
     {
         var key = Auth.NickKey(nick);
-        lock (_gate) return [.. _all.Where(f => Auth.NickKey(f.Author) == key).OrderByDescending(f => f.Id)];
+        lock (_gate) return [.. _all.Where(f => !f.External && Auth.NickKey(f.Author) == key).OrderByDescending(f => f.Id)];
     }
 
-    /// <summary>Усі незняті квартири (розробнику): спершу ті, що чекають, далі свіжі згори.</summary>
+    /// <summary>Усі незняті квартири від гравців (розробнику): спершу ті, що чекають, далі свіжі згори. Зовнішні сюди не йдуть — їх тисячі.</summary>
     public List<KhataFlat> Everything()
     {
-        lock (_gate) return [.. _all.OrderBy(f => f.Live).ThenByDescending(f => f.Id)];
+        lock (_gate) return [.. _all.Where(f => !f.External).OrderBy(f => f.Live).ThenByDescending(f => f.Id)];
     }
 
     public int PendingCount { get { lock (_gate) return _all.Count(f => !f.Live); } }

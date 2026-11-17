@@ -40,7 +40,8 @@
   /// Шкала словами — та сама, що Khata.Points на сервері. Міняєш там — міняй і тут.
   function rulesFor(ctx) {
     const k = boostOf(ctx);
-    return 'Бали за точність, до 1000 за квартиру: промах до 2 % — 1000, на 10 % — близько 800, на чверть — 540, удвічі — 130, '
+    return 'Оголошення справжні. Оренда — за місяць, житло з Airbnb — за ніч: що саме, написано біля поля. '
+      + 'Бали за точність, до 1000 за квартиру: промах до 2 % — 1000, на 10 % — близько 800, на чверть — 540, удвічі — 130, '
       + 'утричі — майже нуль. Удвічі дешевше й удвічі дорожче — однаково далеко. '
       + 'За кожні ' + POINTS_PER_SHARD + ' балів за квартири, які бачиш уперше, — 🏺 ' + k + ' ' + plural(k, 'черепок', 'черепки', 'черепків');
   }
@@ -117,7 +118,7 @@
       st.key = key;
       st.idx = 0;
       // решту фото квартири тягнемо одразу — гортання без білих пауз
-      for (const u of list.slice(1)) { const im = new Image(); im.decoding = 'async'; im.src = u; }
+      for (const u of list.slice(1)) { const im = new Image(); im.decoding = 'async'; im.referrerPolicy = 'no-referrer'; im.src = u; }
     }
     fig.hidden = !list.length;
     if (!list.length) return;
@@ -146,7 +147,7 @@
     const st = state(root);
     const box = document.createElement('div');
     box.className = 'khview';
-    box.innerHTML = '<img alt="Фото квартири" decoding="async">'
+    box.innerHTML = '<img alt="Фото квартири" decoding="async" referrerpolicy="no-referrer">'
       + '<button type="button" class="khvprev" aria-label="Попереднє фото">‹</button>'
       + '<button type="button" class="khvnext" aria-label="Наступне фото">›</button>'
       + '<button type="button" class="khvclose" aria-label="Закрити">✕</button><div class="khvno"></div>';
@@ -193,12 +194,24 @@
   // розкриття, підсумок, рахунок
   // =========================================================================================
 
-  function revealHtml(ctx, v) {
+  /// Оренда — за місяць, оголошення Airbnb — за ніч.
+  const perText = (per) => (per === 'night' ? 'за ніч' : 'за місяць');
+  /// Посилання назовні: нова вкладка, без передачі сторінки, з якої прийшли.
+  const OUT = ' target="_blank" rel="noopener noreferrer"';
+
+  function revealHtml(ctx, v, admin) {
     const r = v.reveal;
     if (!r) return '';
     const rows = r.rows || [];
-    const head = '<div class="khans"><span class="muted small">Насправді</span><b>' + money(r.price, v.unit) + '</b><i>за місяць</i></div>'
-      + (r.by ? '<div class="khby muted small">квартиру додав(ла) ' + ctx.esc(r.by) + '</div>' : '');
+    const outer = r.source && r.source !== 'own';
+    // Справжнє оголошення: що це за житло й посилання на нього — лише тепер, коли ціни вже названо.
+    const what = outer
+      ? '<div class="khwhat">' + (r.about ? '<span>' + ctx.esc(r.about) + '</span>' : '')
+        + (r.link ? '<a href="' + ctx.esc(r.link) + '"' + OUT + '>Відкрити на ' + ctx.esc(r.by || 'сайті') + ' ↗</a>' : '')
+        + (admin && r.id ? '<button type="button" class="ghost khdrop" data-drop="' + r.id + '" title="Прибрати це оголошення з гри назавжди">🗑</button>' : '')
+        + '</div>'
+      : (r.by ? '<div class="khby muted small">квартиру додав(ла) ' + ctx.esc(r.by) + '</div>' : '');
+    const head = '<div class="khans"><span class="muted small">Насправді</span><b>' + money(r.price, v.unit) + '</b><i>' + perText(v.per) + '</i></div>' + what;
     const say = r.say ? '<div class="khsay"><img src="/static/glek.svg" alt=""><span>' + ctx.esc(r.say) + '</span></div>' : '';
     if (!rows.length) return head + '<div class="gempty">Отакої — ніхто не назвав жодної ціни.</div>' + say;
     return head + '<div class="khrows">' + rows.map((x, n) =>
@@ -213,8 +226,9 @@
     const list = v.recap || [];
     if (!list.length) return '';
     return '<details class="khrecap" open><summary>Як це було · ' + list.length + ' ' + flatsWord(list.length) + '</summary><ol>'
-      + list.map((r) => '<li><img src="' + ctx.esc(r.photo) + '" alt="" loading="lazy"><span class="khrc"><b>' + ctx.esc(r.city) + '</b> — '
-        + '<span class="khra">' + money(r.price, r.unit) + '</span>'
+      + list.map((r) => '<li><img src="' + ctx.esc(r.photo) + '" alt="" loading="lazy" referrerpolicy="no-referrer"><span class="khrc"><b>' + ctx.esc(r.city) + '</b> — '
+        + '<span class="khra">' + money(r.price, r.unit) + ' ' + perText(r.per) + '</span>'
+        + (r.link ? ' <a class="khrl" href="' + ctx.esc(r.link) + '"' + OUT + ' title="Відкрити оголошення">↗</a>' : '')
         + (r.best != null ? '<span class="khrb">найближче — ' + ctx.esc(nameAt(ctx, r.best) || ctx.seatName(r.best)) + ': ' + money(r.value, r.unit)
           + ' · <b>+' + num(r.points) + '</b></span>' : '<span class="khrb">ніхто не назвав ціни</span>') + '</span></li>').join('')
       + '</ol></details>';
@@ -361,7 +375,7 @@
       if (!busy || busy === document.body || !/^(INPUT|TEXTAREA|SELECT)$/.test(busy.tagName)) input.focus();
     }
     const unit = root.querySelector('.khunit');
-    const unitText = v.unit ? v.unit + ' за місяць' : '';
+    const unitText = v.unit ? v.unit + ' ' + perText(v.per) : '';
     if (unit.textContent !== unitText) unit.textContent = unitText;
 
     const my = root.querySelector('.khmy');
@@ -370,7 +384,7 @@
       : '';
     if (my.textContent !== myText) my.textContent = myText;
 
-    setHtml(root.querySelector('.khrev'), phase === 'reveal' ? revealHtml(ctx, v) : '');
+    setHtml(root.querySelector('.khrev'), phase === 'reveal' ? revealHtml(ctx, v, !!(st.bank && st.bank.admin)) : '');
     setHtml(root.querySelector('.khrecapbox'), phase === 'done' ? recapHtml(ctx, v) : '');
     paintPreview(root);
     paintWho(root, ctx);
@@ -425,7 +439,15 @@
       st.bankErr = e.message;
     } finally {
       st.bankBusy = false;
-      if (root._kh === st) renderBank(root, ctx);
+      if (root._kh === st) {
+        renderBank(root, ctx);
+        // Імпорт світу йде фоном кілька хвилин — поки йде, поступ перечитуємо самі.
+        const box = root.querySelector('.khbank');
+        if (st.bank && st.bank.import && st.bank.import.running && box && !box.hidden) {
+          clearTimeout(st.poll);
+          st.poll = setTimeout(() => { if (root._kh === st) loadBank(root, ctx, true); }, 3000);
+        }
+      }
     }
   }
 
@@ -483,15 +505,26 @@
     const v = ctx.view || {};
     const total = b ? b.total : (v.bank || {}).total;
     const fit = fitOf(ctx, st);
-    let html = '<div class="khbh"><span>🏠 У банку <b>' + (total == null ? '…' : total) + '</b> ' + flatsWord(total || 0)
-      + (total && fit != null && fit !== total ? ' <span class="muted">· для обраних міст — ' + fit + '</span>' : '') + '</span>';
+    let html = '<div class="khbh"><span>🏠 У банку <b>' + (total == null ? '…' : num(total)) + '</b> ' + flatsWord(total || 0)
+      + (total && fit != null && fit !== total ? ' <span class="muted">· для обраних міст — ' + num(fit) + '</span>' : '') + '</span>';
     if (!b) html += '<span class="muted small">' + (st.bankErr ? 'Банк не відповів: ' + ctx.esc(st.bankErr) : 'Зазираю в банк…') + '</span></div>';
     else {
       html += (b.account
         ? (st.form ? '' : '<button type="button" class="primary" data-kh="open">🏠 Додати квартиру</button>')
         : '<span class="muted small">Додавати квартири можна з акаунта</span>') + '</div>';
-      if (!total && !st.form) html += '<div class="muted small">Банк наповнюємо самі: фото своєї чи знайомої квартири, місто й ціна за місяць. '
-        + 'Гравці бачать лише фото й місто — і вгадують ціну.</div>';
+      const src = b.bySource || {};
+      if (src.airbnb) html += '<div class="muted small">Зі світу — ' + num(src.airbnb) + ' справжніх оголошень Airbnb (ціна за ніч)'
+        + (src.own ? ', від гравців — ' + num(src.own) : '') + '. Дані світу — <a href="https://insideairbnb.com/"' + OUT + '>Inside Airbnb</a>, CC BY 4.0; '
+        + 'фото показуються просто з Airbnb.</div>';
+      else if (!total && !st.form) html += '<div class="muted small">Банк порожній. '
+        + (b.admin ? 'Набери світ кнопкою нижче або додай квартиру сам.' : 'Світ набирає розробник; свою квартиру можна додати кнопкою вище.') + '</div>';
+      if (b.admin) {
+        const im = b.import || {};
+        html += '<div class="khimp">' + (im.running
+          ? '<span>🌍 Набираю світ: ' + im.done + ' з ' + im.total + ' міст · нових ' + num(im.added) + ' · ' + ctx.esc(im.message || '') + '</span>'
+          : '<button type="button" class="ghost" data-kh="import">🌍 ' + (src.airbnb ? 'Донабрати світ' : 'Набрати світ') + ' з Inside Airbnb</button>'
+            + (im.message ? '<span class="muted small">' + ctx.esc(im.message) + '</span>' : '')) + '</div>';
+      }
       if (b.account && !st.form) html += '<div class="muted small">За кожну схвалену квартиру — 🏺 ' + b.reward + '. Свою квартиру в компанії ти не вгадуєш.</div>';
       if (st.form) html += formHtml(ctx, st);
       const pending = (b.all || []).filter((f) => f.status !== 'ok');
@@ -654,6 +687,7 @@
       case 'send': sendFlat(root, ctx); break;
       case 'view': { const f = flatOf(st, id); if (f) openViewer(root, f.photos, 0); break; }
       case 'approve': bankAct(root, ctx, '/flat/approve', { id }); break;
+      case 'import': bankAct(root, ctx, '/import', {}); break;
       case 'remove': {
         const f = flatOf(st, id);
         bankAct(root, ctx, '/flat/remove', { id }, 'Зняти квартиру' + (f ? ' «' + f.city + '»' : '') + '? Фото видаляться.');
@@ -713,7 +747,23 @@
       });
       input.addEventListener('input', () => paintPreview(root));
       const fig = root.querySelector('.khphoto');
-      fig.querySelector('img').fetchPriority = 'high';
+      const photo = fig.querySelector('img');
+      photo.fetchPriority = 'high';
+      // Фото сторонніх оголошень вантажаться просто з сайту-джерела: звідки прийшли — не кажемо.
+      photo.referrerPolicy = 'no-referrer';
+      // Не відкрилось — мабуть, оголошення зняли: сервер перевірить сам і прибере його з банку.
+      photo.addEventListener('error', () => {
+        const src = photo.getAttribute('src') || '';
+        const st = state(root);
+        if (!/^https:/.test(src) || st.broken === src) return;
+        st.broken = src;
+        ctx.toast('Фото не відкрилось — схоже, це оголошення вже зняли', 'err');
+        api(ctx, 'POST', API + '/broken', { url: src }).catch(() => {});
+      });
+      root.querySelector('.khrev').addEventListener('click', (e) => {
+        const b = e.target.closest('[data-drop]');
+        if (b) bankAct(root, ctx, '/flat/remove', { id: +b.dataset.drop }, 'Прибрати це оголошення з гри назавжди?');
+      });
       swipe(fig, (d) => turn(root, ctx, d));
       fig.addEventListener('click', (e) => {
         if (e.target.closest('.khprev')) turn(root, ctx, -1);
@@ -763,7 +813,7 @@
       const arc = root.querySelector('.garc');
       if (arc && arc._arc) arc._arc.stop();
       closeViewer(root);
-      if (root._kh) dropForm(root._kh);
+      if (root._kh) { dropForm(root._kh); clearTimeout(root._kh.poll); }
       root._kh = null;
     },
   });

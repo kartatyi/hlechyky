@@ -82,6 +82,16 @@
 .khans b { font-size: 1.6em; color: var(--accent); font-variant-numeric: tabular-nums; }
 .khans i { font-style: normal; color: var(--muted); font-size: .9em; }
 .khby { text-align: center; margin-top: 2px; }
+/* Справжнє оголошення на розкритті: що це за житло й посилання на нього. */
+.khwhat {
+  display: flex; align-items: center; justify-content: center; gap: 6px 12px; flex-wrap: wrap; margin-top: 6px; padding: 6px 10px;
+  background: var(--panel); border-radius: 10px; font-size: .92em; line-height: 1.35; text-align: center;
+}
+.khwhat span { overflow-wrap: anywhere; }
+.khwhat a, .khrl, .khbank a { color: var(--accent); text-decoration: none; white-space: nowrap; font-weight: 600; }
+.khwhat a:hover, .khrl:hover, .khbank a:hover { text-decoration: underline; }
+.khdrop { min-height: 30px; padding: 2px 8px; }
+.khimp { display: flex; align-items: center; gap: 6px 10px; flex-wrap: wrap; }
 .khrows { display: flex; flex-direction: column; gap: 3px; margin-top: 8px; }
 .khrow {
   position: relative; overflow: hidden; display: flex; align-items: center; gap: 8px; padding: 5px 9px;

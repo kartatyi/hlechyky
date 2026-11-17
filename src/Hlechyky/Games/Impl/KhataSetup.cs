@@ -26,6 +26,16 @@ public static class KhataSetup
                     economy.Grant(nick, economy.Earn(n), "Здам хату — квартиру схвалено", refKey),
             };
         });
+        // Фон: імпорт світу з Inside Airbnb на прохання розробника й неспішна перевірка, чи фото сторонніх оголошень ще живі.
+        services.AddSingleton(sp =>
+        {
+            var http = new HttpClient { Timeout = TimeSpan.FromMinutes(15) };
+            http.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (compatible)");
+            http.DefaultRequestHeaders.Accept.ParseAdd("*/*");
+            return new KhataImport(sp.GetRequiredService<KhataStore>(), http, sp.GetService<IClock>() ?? new SystemClock(),
+                sp.GetService<ILogger<KhataImport>>());
+        });
+        services.AddHostedService(sp => sp.GetRequiredService<KhataImport>());
         return services;
     }
 
@@ -37,15 +47,38 @@ public static class KhataSetup
         api.MapPost("/flat/approve", Approve);
         api.MapPost("/flat/edit", Edit);
         api.MapPost("/flat/remove", Remove);
+        api.MapPost("/import", Import);
+        api.MapPost("/broken", Broken);
         api.MapGet("/pic/{file}", (string file, KhataStore store, HttpContext c) => Pic(file, store, c));
         return app;
     }
 
     static object Flat(KhataFlat f) => new
     {
-        id = f.Id, region = f.Region, city = f.City, price = f.Price, unit = f.Unit, photos = f.Urls.ToArray(),
-        by = f.Author, at = f.At, status = f.Status,
+        id = f.Id, region = f.Region, city = f.City, price = f.Price, unit = f.Unit, per = f.Per, photos = f.Urls.ToArray(),
+        by = f.Author, at = f.At, status = f.Status, source = f.Source, link = f.Link, about = f.About,
     };
+
+    /// <summary>POST /api/games/khata/import — розробник просить набрати (чи донабрати) світ з Inside Airbnb. Іде фоном; поступ — у /bank.</summary>
+    public static IResult Import(HttpContext c, KhataImport import)
+    {
+        if (!Auth.IsAdmin(c)) return Results.BadRequest(new { ok = false, message = AdminOnly });
+        return import.Start()
+            ? Results.Ok(new { ok = true, message = "Набираю світ — це кілька хвилин, поступ видно тут" })
+            : Results.BadRequest(new { ok = false, message = "Імпорт уже йде" });
+    }
+
+    public sealed record BrokenRequest(string? Url);
+
+    /// <summary>
+    /// POST /api/games/khata/broken { url } — у гравця не відкрилось фото стороннього оголошення. Сервер не вірить на слово:
+    /// лише ставить те оголошення в чергу на перевірку (черга коротка, тож заспамити її нема чим).
+    /// </summary>
+    public static IResult Broken(BrokenRequest b, KhataImport import)
+    {
+        import.Suspect(b.Url);
+        return Results.Ok(new { ok = true });
+    }
 
     /// <summary>
     /// GET /api/games/khata/bank — скільки квартир у грі, мої (з цінами — вони й так мої), а розробнику — всі, спершу ті,
@@ -56,15 +89,28 @@ public static class KhataSetup
         var account = Auth.IsUser(c);
         var admin = Auth.IsAdmin(c);
         var economy = sp.GetService<Hlechyky.Games.Economy.Economy>();
+        var state = sp.GetService<KhataImport>()?.State;
         c.Response.Headers.CacheControl = "no-store";
         return Results.Json(new
         {
             total = store.Live.Count,
             byRegion = new
             {
-                ua = store.Live.Count(f => f.Region == KhataRegions.Ua),
-                eu = store.Live.Count(f => f.Region == KhataRegions.Eu),
-                world = store.Live.Count(f => f.Region == KhataRegions.World),
+                ua = store.ByRegion.GetValueOrDefault(KhataRegions.Ua),
+                eu = store.ByRegion.GetValueOrDefault(KhataRegions.Eu),
+                world = store.ByRegion.GetValueOrDefault(KhataRegions.World),
+            },
+            // звідки квартири: від гравців і зі сторонніх джерел
+            bySource = new
+            {
+                own = store.BySource.GetValueOrDefault(KhataSources.Own),
+                airbnb = store.BySource.GetValueOrDefault(KhataSources.Airbnb),
+            },
+            // поступ імпорту світу — лише розробнику (він його й запускає)
+            import = !admin || state is null ? null : new
+            {
+                running = state.Running, done = state.Done, total = state.Total, added = state.Added, updated = state.Updated,
+                message = state.Message, finishedAt = state.FinishedAt,
             },
             account,
             admin,
