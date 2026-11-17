@@ -7,7 +7,7 @@
 // Колір обрію (--tint) і бік, звідки світить сонце (--sun-x, --sh-x), беруть фон і блоки всього сайту. Звідси йдуть лише змінні на <html> — кольори
 // (--sk0…--sk2, --l1…--l4 і їхні «…m» у тумані, --lb міст, --rock, --w0, --w1, --pad, --mist), скільки туману
 // (--sky-mist), ліхтарі на мосту (--sky-lamp), світило (--sky-orb, --sky-halo, --sky-oo), зорі й хмари
-// (--sky-stars, --sky-cl, --sky-cl2; самі хмари, дощ і сніг генеруються тут же — див. clouds() і fall()) — і два атрибути:
+// (--sky-stars; самі хмари, дощ і сніг генеруються тут же — див. clouds() і fall()) — і два атрибути:
 // data-sky (night | dawn | day | dusk) та data-wx (clear | cloud | fog | rain | snow | storm). Перераховуємо раз на
 // п'ять хвилин і коли вкладка вертається; кольори не анімуються зовсім.
 (function () {
@@ -56,7 +56,9 @@
   // намальовано пейзаж; решта — множник до нього, тож ніч, сутінки й погода діють так само в будь-яку пору.
   const SUMMER = hex('#3a7355');
   const LAND = ['#93a6a4', '#56894a', '#3a7355', '#7c743c'].map(hex);
-  const LEAF = ['#7f8d88', '#6f9f52', '#3a7355', '#a8782f'].map(hex);
+  const LEAF = ['#7f8d88', '#6f9f52', '#3a7355', '#b9742a'].map(hex);
+  const LEAF2 = ['#86928c', '#8fb85e', '#44804f', '#cda62a'].map(hex);   // другий і третій відтінки листяних: восени — жовтий і червоний
+  const LEAF3 = ['#7a8884', '#7aa860', '#346a50', '#a5432a'].map(hex);
   const EVER = ['#4d6f66', '#3a7355', '#3a7355', '#3f6e4c'].map(hex);   // сосни зелені цілий рік, узимку — з інеєм
   const BG = hex('#0f1f18');     // наш зелений: у нього сходить передній план, тож пейзаж виростає зі сторінки
   /// Чотири пори: небо згори донизу (верх, середина, обрій), зелень землі в цьому світлі, світило, сяйво довкола, зорі.
@@ -133,13 +135,16 @@
     // Вибраний вигляд («усе разом»): далеке лишається в кольорах неба й тумані, а ближній план — темні силуети нашого
     // зеленого. Від пори року й світла в них лишається відтінок (seasonal), щоб осінь і зима читались і тут.
     const near = (green, seasonal, hint) => mix(mix(sk[1], BG, green), seasonal, hint);
-    const l2bN = near(0.74, l2b, 0.08), l3N = near(0.88, l3, 0.1), l3tN = near(0.86, mix(l3e, sk[2], 0.3), 0.1);
+    const l2bN = near(0.74, l2b, 0.3), l3N = near(0.88, l3, 0.22), l3tN = mix(near(0.8, mix(l3e, sk[2], 0.3), 0.22), mist, 0.14);
+    const leafN = (pal) => near(0.6, mix(sk[2], tone(g0, season(pal)), 0.76), 0.8);
     const rock2N = near(0.62, mix(l2b, mix(sk[2], hex('#b9a89a'), 0.5), 0.34), 0.08);
 
     pos = { alt: s.alt, ha: s.ha, top: s.top, day: s.alt > -4 };
+    const orbC = mix(pos.day ? c.orb : P.night.orb, sk[2], 0.1);
     const sinE = Math.sin(pos.day ? s.ha : s.ha - Math.PI);   // де світило: −1 — ліворуч, +1 — праворуч
     return {
       phase, kind: k, cloud, code: fake && fake.wx ? null : wx ? wx.code : null,
+      cl: mix(sk[2], hex('#ffffff'), 0.12 + 0.38 * t), cl2: mix(sk[1], hex('#0d1318'), wet ? 0.5 : 0.22), orb: orbC.join(','),
       vars: {
         '--sk0': css(sk[0]), '--sk1': css(sk[1]), '--sk2': css(sk[2]),
         // далі від нас — ближче до кольору обрію (повітряна димка), ближче — до нашого зеленого; низ кожного шару
@@ -159,28 +164,29 @@
         '--sun-x': Math.round(50 + 42 * Math.sin(s.alt > -4 ? s.ha : s.ha - Math.PI)) + '%',
         '--sh-x': Math.round(-18 * Math.sin(s.alt > -4 ? s.ha : s.ha - Math.PI)) + 'px',
         // ближні сосни: не чорні силуети, а в тому ж серпанку, що й усе
-        '--l3t': css(l3tN), '--l3tm': css(mix(l3tN, mist, 0.06)),
+        '--l3t': css(l3tN), '--l3tm': css(mix(l3tN, mist, 0.24)),
         // тіні на воді: темні, а в хмарну погоду слабші (сонця нема — нема й тіні)
         // Тінь бере колір неба над нею: удень синьо-зелена, на заході синя, вночі майже чорна.
         '--shd': css(mix(mix(sk[0], g, 0.3), hex('#020806'), 0.6)), '--sky-shd': ((1 - cover) * 0.5 + 0.1).toFixed(2),
         '--shade': css(mix(mix(c.sk[0], grey[0], cover), hex('#020504'), 0.36)),
         // об'єм: тіньовий бік дерев, схилів і скель — з боку, протилежного сонцю; у хмарну погоду майже зникає
-        '--sh-l': (clamp(0.5 + sinE * 2, 0, 1) * 0.4 * (1 - cover * 0.7)).toFixed(2),
-        '--sh-r': (clamp(0.5 - sinE * 2, 0, 1) * 0.4 * (1 - cover * 0.7)).toFixed(2),
+        '--sh-l': (clamp(0.5 + sinE * 2, 0, 1) * 0.3 * (1 - cover * 0.7)).toFixed(2),
+        '--sh-r': (clamp(0.5 - sinE * 2, 0, 1) * 0.3 * (1 - cover * 0.7)).toFixed(2),
         // пора року: листя крон (взимку дерева голі), латаття й жовті глечики — наш знак, тож є завжди, крім зими (грудень — лютий)
-        '--leaf': css(near(0.72, mix(sk[2], tone(g0, season(LEAF)), 0.76), 0.55)), '--leaf-o': (1 - 0.72 * wWin).toFixed(2),
-        '--pine': css(near(0.8, mix(sk[2], gE, 0.8), 0.12)),
+        '--leaf': css(leafN(LEAF)), '--leaf2': css(leafN(LEAF2)), '--leaf3': css(leafN(LEAF3)), '--leaf-o': (1 - 0.72 * wWin).toFixed(2),
+        // сніг лежить серед зими, цвіт — у розпал весни, опале листя на воді — у розпал осені
+        '--snow': css(mix(hex('#f4f8fb'), sk[2], 0.28)), '--snow-o': clamp((wWin - 0.5) * 4, 0, 1).toFixed(2),
+        '--bloom-o': clamp((wSpr - 0.62) * 4, 0, 1).toFixed(2), '--fall-o': clamp((wAut - 0.55) * 3, 0, 1).toFixed(2),
+        '--pine': css(mix(near(0.72, mix(sk[2], gE, 0.8), 0.22), mist, 0.18)),
         '--pad-o': clamp((0.62 - wWin) * 5, 0, 1).toFixed(2), '--fl-o': clamp((0.62 - wWin) * 5, 0, 1).toFixed(2),
         '--tint': css(mix(mix(c.sk[2], grey[2], cover), g, 0.12)),
         '--w0': css(mix(mix(sk[2], sk[1], 0.3), mix(sk[2], hex('#ffffff'), 0.3), ice * 0.6)),
         '--w1': css(mix(mix(sk[1], g, 0.62), mix(sk[1], hex('#dfe8ea'), 0.35), ice * 0.55)),
         '--pad': css(mix(g, hex('#3f9e68'), 0.25 + 0.25 * t)),
-        '--sky-orb': css(mix(pos.day ? c.orb : P.night.orb, sk[2], 0.1)),
+        '--sky-orb': css(orbC),
         '--sky-halo': (Math.max(c.halo * 1.3, 0.5) * (1 - cover)).toFixed(3),
         '--sky-oo': clamp(1 - cover * 1.05, 0, 1).toFixed(2),
         '--sky-stars': (c.stars * (1 - clamp(cloud / 100, 0, 1) * 0.9)).toFixed(2),
-        '--sky-cl': css(mix(sk[2], hex('#ffffff'), 0.12 + 0.38 * t)),
-        '--sky-cl2': css(mix(sk[1], hex('#0d1318'), wet ? 0.5 : 0.22)),
         // старі назви: смужка під шапкою й відблиск угорі сторінки
         '--sky1': css(sk[1]), '--sky2': css(sk[2]),
       },
@@ -216,6 +222,12 @@
     const up = alt >= 0 ? (alt / Math.max(12, pos.top || 40)) * room : alt * 3.3 * s;
     el.style.setProperty('--ob', Math.min(H - hdr - 36, horizon + up).toFixed(1) + 'px');
     el.style.setProperty('--rx', xu.toFixed(1));
+    // хмари: картинка 2400×300, тож один її оберт — у вісім висот шару; проба мерехтіння: де на сцені лежить вода
+    const cl = el.querySelector('.sky-clouds');
+    if (cl) el.style.setProperty('--cl-p', (cl.clientHeight * 8).toFixed(0) + 'px');
+    el.style.setProperty('--wt', (H - 204 * s).toFixed(0) + 'px');
+    el.style.setProperty('--wh', (84 * s).toFixed(0) + 'px');
+    el.style.setProperty('--gw', (190 * s).toFixed(0) + 'px');
     // Тіні на воді падають у бік від світила; що нижче воно стоїть, то вони довші.
     const lean = (-34 * Math.sin(ha)).toFixed(1);
     const long = (0.5 + 0.45 * (1 - clamp(alt / Math.max(12, pos.top || 40), 0, 1))).toFixed(2);
@@ -237,50 +249,155 @@
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 
-  /// Хмари — окремий шар за пейзажем. Що малювати, вирішує погода: ясно — кілька пір'ястих пасом; мінлива хмарність —
-  /// купчасті; хмарно — багато купчастих; пелена, дощ, сніг — суцільна пелена з темним сподом; туман — низькі смуги.
-  /// Де саме, якого розміру й скільки — випадково. Малюнок повторено тричі впритул, і шар повільно пливе вбік (CSS).
-  let cloudBand = '';
-  function clouds(kind, cloud) {
+  /// Хмари — окремий шар за пейзажем, намальований на полотні. Кожну хмару ліпимо з десятків і сотень м'яких кульок,
+  /// тож окремих фігур у ній не видно: спершу тіло, потім світло на боці від сонця, потім тінь зісподу. Що буде в небі,
+  /// вирішує погода (ясно, мінлива хмарність, хмарно, пелена, дощ, гроза, туман), а яке саме небо з кількох можливих
+  /// для цієї погоди, скільки хмар, де й якого розміру — випадок. Види: пір'ясті пасма (часом із гачком), баранці
+  /// рядами, малі купчасті, купчасті вежі, пелена з прогалинами, вежа з ковадлом. Картинка повторюється по ширині й
+  /// повільно пливе (CSS), шва нема: кульки біля краю домальовано з іншого боку.
+  let cloudKey = '', cloudUrl = '';
+  function clouds(v) {
     const el = document.querySelector('#sky .sky-clouds');
     if (!el) return;
-    const band = kind === 'fog' ? 'fog' : kind === 'rain' || kind === 'snow' || kind === 'storm' ? 'wet'
-      : cloud < 12 ? 'clear' : cloud < 45 ? 'few' : cloud < 80 ? 'many' : 'over';
-    if (band === cloudBand) return;
-    cloudBand = band;
-    const r = rng(seed), R = (a, b) => a + (b - a) * r(), n0 = (x) => x.toFixed(0);
-    const streak = (x, y, w, h) => '<ellipse cx="' + n0(x) + '" cy="' + n0(y) + '" rx="' + n0(w) + '" ry="' + n0(h) + '"/>';
-    const puff = (x, y, w, h) => {                 // купчаста: кілька куль на пласкішій основі
-      const n = 3 + Math.floor(R(0, 4));
-      let s = streak(x, y + h * 0.2, w * 0.62, h * 0.34);
-      for (let i = 0; i < n; i++) {
-        const f = i / (n - 1) - 0.5;
-        s += streak(x + f * w, y - (1 - 4 * f * f) * h * R(0.25, 0.6), (w / n) * R(0.9, 1.5), h * R(0.45, 0.8));
-      }
+    const band = v.kind === 'fog' ? 'fog' : v.kind === 'storm' ? 'storm' : v.kind === 'rain' || v.kind === 'snow' ? 'wet'
+      : v.cloud < 12 ? 'clear' : v.cloud < 45 ? 'few' : v.cloud < 80 ? 'many' : 'over';
+    const key = band + '|' + v.cl.join(',') + '|' + v.cl2.join(',');
+    if (key === cloudKey) return;
+    cloudKey = key;
+    const W = 2400, H = 300, cv = document.createElement('canvas');
+    cv.width = W; cv.height = H;
+    const g = cv.getContext('2d');
+    const r = rng(seed), R = (a, b) => a + (b - a) * r(), N = (a, b) => Math.floor(R(a, b));
+    const dark = band === 'wet' || band === 'storm' || band === 'over';
+    const cMid = dark ? mix(v.cl2, v.cl, 0.22) : mix(v.cl, v.cl2, 0.3);
+    const cLit = dark ? mix(v.cl2, v.cl, 0.6) : mix(v.cl, [255, 255, 255], 0.35);
+    const cDark = dark ? mix(v.cl2, [0, 0, 0], 0.28) : mix(v.cl2, v.cl, 0.25);
+    const sprite = (c) => {                        // м'яка кулька — «глина», з якої ліпимо
+      const s = document.createElement('canvas');
+      s.width = s.height = 64;
+      const q = s.getContext('2d'), gr = q.createRadialGradient(32, 32, 0, 32, 32, 32), rgb = c.join(',');
+      gr.addColorStop(0, 'rgba(' + rgb + ',1)'); gr.addColorStop(0.5, 'rgba(' + rgb + ',.8)'); gr.addColorStop(1, 'rgba(' + rgb + ',0)');
+      q.fillStyle = gr; q.fillRect(0, 0, 64, 64);
       return s;
     };
-    let cir = '', puffs = '', deck = '';
-    const nCir = band === 'clear' ? Math.floor(R(1, 4)) : band === 'few' ? Math.floor(R(2, 5)) : band === 'many' ? 2 : 0;
-    for (let i = 0; i < nCir; i++) cir += streak(R(0, 2000), R(20, 190), R(160, 460), R(4, 11));
-    const nPuff = band === 'few' ? Math.floor(R(3, 7)) : band === 'many' ? Math.floor(R(8, 14)) : band === 'over' ? 7 : band === 'wet' ? 5 : 0;
-    for (let i = 0; i < nPuff; i++) { const big = R(0.6, 1.7); puffs += puff(R(0, 2000), R(40, 230), 150 * big * R(0.8, 1.6), 44 * big); }
-    if (band === 'over' || band === 'wet') { const n = Math.floor(R(8, 13)); for (let i = 0; i < n; i++) deck += streak(R(0, 2000), R(10, 210), R(380, 760), R(34, 76)); }
-    if (band === 'fog') for (let i = 0; i < 6; i++) deck += streak(R(0, 2000), R(150, 290), R(500, 900), R(26, 50));
-    const one = '<g class="sk-deck" filter="url(#sk-b3)">' + deck + '</g><g class="sk-cir" filter="url(#sk-b1)">' + cir + '</g><g class="sk-pf" filter="url(#sk-b2)">' + puffs + '</g>';
+    const sMid = sprite(cMid), sLit = sprite(cLit), sDark = sprite(cDark);
+    const dab = (s, x, y, rad, a, flat) => {           // flat < 1 — кулька сплюснута (для шарів і баранців)
+      const ry = rad * (flat || 1);
+      g.globalAlpha = Math.min(1, a);
+      for (const dx of [0, W, -W]) if (x + dx + rad > 0 && x + dx - rad < W) g.drawImage(s, x + dx - rad, y - ry, rad * 2, ry * 2);
+    };
+    const side = Math.sin(pos.day ? pos.ha : pos.ha - Math.PI) >= 0 ? 1 : -1;      // з якого боку світло
+    const shape = (bl, litA, darkA) => {
+      g.globalCompositeOperation = 'source-over';
+      for (const b of bl) dab(sMid, b[0], b[1], b[2], b[3], b[4]);
+      g.globalCompositeOperation = 'source-atop';
+      for (const b of bl) dab(sLit, b[0] + side * b[2] * 0.25, b[1] - b[2] * 0.4 * (b[4] || 1), b[2] * 0.75, b[3] * litA, b[4]);
+      for (const b of bl) dab(sDark, b[0], b[1] + b[2] * 0.55 * (b[4] || 1), b[2] * 0.8, b[3] * darkA, b[4]);
+      g.globalCompositeOperation = 'source-over';
+    };
+    const cumulus = (x, y, w, h) => {              // пласка основа, згори — кілька випадкових горбів
+      const n = Math.round(((w * h) / 420) * R(0.8, 1.3)) + 14, bl = [], hp = [];
+      for (let i = N(2, 6); i--;) hp.push([R(-0.8, 0.8), R(0.45, 1), R(0.18, 0.5)]);
+      for (let i = 0; i < n; i++) {
+        const u = R(-1, 1);
+        let top = 0.25 * (1 - u * u);
+        for (const q of hp) top = Math.max(top, q[1] * Math.exp(-((u - q[0]) ** 2) / (2 * q[2] * q[2])));
+        bl.push([x + (u * w) / 2, y - h * top * Math.pow(r(), 0.7), (h * 0.16 + h * 0.3 * r()) * (0.55 + 0.45 * top), R(0.5, 0.9)]);
+      }
+      shape(bl, 0.75, 0.55);
+    };
+    const cirrus = (x, y, len, a) => {             // тонке пасмо вздовж ледь кривої лінії
+      const ang = R(-0.12, 0.12), hook = r() < 0.5 ? R(20, 60) : 0, n = Math.round(len / 5);
+      let wob = 0;
+      g.globalCompositeOperation = 'source-over';
+      for (let i = 0; i < n; i++) {
+        const f = i / n;
+        wob = (wob + R(-1.2, 1.2)) * 0.93;
+        dab(sLit, x + f * len, y + Math.sin(ang) * f * len - hook * Math.pow(1 - f, 3) + wob, R(3, 7) * (0.6 + Math.sin(f * Math.PI)), a * R(0.5, 1) * Math.sin(Math.max(0.05, f) * Math.PI));
+      }
+    };
+    const flock = (x, y, w, h) => {                // баранці: дрібні купки рядами, до країв поля рідшають
+      const bl = [], dx = R(26, 40), dy = R(15, 22), sl = R(-0.25, 0.25);
+      for (let yy = -h / 2; yy < h / 2; yy += dy) for (let xx = -w / 2; xx < w / 2; xx += dx) {
+        const e = 1 - Math.max(Math.abs(xx) / (w / 2), Math.abs(yy) / (h / 2));
+        if (r() > e * 1.5) continue;
+        // кожен баранець — дві-три сплюснуті кульки, що зливаються із сусідами, а не окрема крапка
+        for (let q = N(2, 4); q--;) bl.push([x + xx + R(-12, 12) + yy * sl * 2, y + yy + R(-4, 4), R(13, 24), R(0.22, 0.5) * Math.min(1, e * 2.2), R(0.4, 0.62)]);
+      }
+      shape(bl, 0.6, 0.35);
+    };
+    const deck = (y0, y1, n, a) => { const bl = []; for (let i = 0; i < n; i++) bl.push([R(0, W), R(y0, y1), R(70, 170), a * R(0.5, 1), R(0.45, 0.8)]); shape(bl, 0.35, 0.6); };
+    const anvil = (x, y) => {                      // грозова вежа з пласким ковадлом угорі
+      cumulus(x, y, R(260, 360), R(170, 210));
+      const bl = [];
+      for (let i = 0; i < 90; i++) { const u = R(-1, 1); bl.push([x + u * R(300, 420), y - R(175, 215) + Math.abs(u) * 14, R(16, 34), R(0.5, 0.85)]); }
+      shape(bl, 0.7, 0.45);
+    };
+    const many = (n, f) => { for (let i = n; i--;) f(); };
+    const skies = {
+      clear: [
+        () => many(N(1, 5), () => cirrus(R(0, W), R(20, 150), R(260, 760), 0.16)),
+        () => { if (r() < 0.6) flock(R(0, W), R(40, 110), R(300, 620), R(70, 120)); many(N(0, 3), () => cirrus(R(0, W), R(20, 170), R(200, 560), 0.14)); },
+        () => { cumulus(R(0, W), R(150, 220), R(110, 190), R(34, 54)); cirrus(R(0, W), R(20, 120), R(300, 700), 0.14); },
+        () => {},
+      ],
+      few: [
+        () => many(N(3, 7), () => cumulus(R(0, W), R(110, 230), R(130, 300), R(40, 86))),
+        () => { many(N(1, 3), () => cumulus(R(0, W), R(170, 235), R(240, 420), R(110, 170))); many(N(2, 5), () => cumulus(R(0, W), R(120, 220), R(90, 170), R(28, 46))); },
+        () => { many(N(1, 3), () => flock(R(0, W), R(50, 130), R(380, 760), R(90, 150))); many(N(1, 4), () => cumulus(R(0, W), R(150, 230), R(120, 240), R(36, 70))); },
+        () => { many(N(2, 5), () => cirrus(R(0, W), R(20, 140), R(300, 800), 0.18)); many(N(2, 4), () => cumulus(R(0, W), R(140, 230), R(140, 280), R(44, 90))); },
+      ],
+      many: [
+        () => many(N(8, 14), () => cumulus(R(0, W), R(90, 235), R(160, 380), R(50, 120))),
+        () => { deck(40, 120, 26, 0.3); many(N(5, 9), () => cumulus(R(0, W), R(130, 235), R(200, 420), R(60, 130))); },
+        () => { many(N(3, 5), () => flock(R(0, W), R(50, 150), R(500, 900), R(110, 170))); many(N(3, 6), () => cumulus(R(0, W), R(150, 235), R(180, 340), R(60, 110))); },
+      ],
+      over: [
+        () => { deck(10, 150, 70, 0.5); deck(120, 230, 40, 0.42); },
+        () => { deck(10, 120, 60, 0.5); many(N(5, 9), () => cumulus(R(0, W), R(150, 240), R(260, 520), R(60, 110))); },
+      ],
+      wet: [
+        () => { deck(0, 150, 90, 0.6); deck(120, 240, 50, 0.5); many(N(4, 9), () => cumulus(R(0, W), R(200, 262), R(120, 260), R(26, 44))); },
+        () => { deck(0, 130, 80, 0.6); many(N(4, 7), () => cumulus(R(0, W), R(160, 250), R(300, 560), R(80, 140))); },
+      ],
+      storm: [() => { deck(0, 140, 80, 0.62); anvil(R(300, W - 300), 250); if (r() < 0.5) anvil(R(300, W - 300), 255); many(N(3, 6), () => cumulus(R(0, W), R(200, 260), R(140, 300), R(30, 50))); }],
+      fog: [() => deck(150, 290, 46, 0.4), () => { deck(120, 290, 60, 0.36); many(N(0, 3), () => cirrus(R(0, W), R(20, 90), R(300, 700), 0.12)); }],
+    };
+    const sky = skies[band];
+    sky[Math.floor(r() * sky.length)]();
     el.dataset.band = band;
-    el.innerHTML = '<svg viewBox="0 0 6000 300" preserveAspectRatio="none"><defs>' +
-      '<filter id="sk-b1" x="-20%" y="-200%" width="140%" height="500%"><feGaussianBlur stdDeviation="14 5"/></filter>' +
-      '<filter id="sk-b2" x="-10%" y="-40%" width="120%" height="180%"><feGaussianBlur stdDeviation="6"/></filter>' +
-      '<filter id="sk-b3" x="-20%" y="-100%" width="140%" height="300%"><feGaussianBlur stdDeviation="34 16"/></filter>' +
-      '<linearGradient id="sk-g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" class="sk-s0"/><stop offset="1" class="sk-s1"/></linearGradient></defs>' +
-      '<g>' + one + '</g><g transform="translate(2000 0)">' + one + '</g><g transform="translate(4000 0)">' + one + '</g></svg>';
+    cv.toBlob((b) => {
+      if (!b) return;
+      const u = URL.createObjectURL(b);
+      el.style.backgroundImage = 'url(' + u + ')';
+      if (cloudUrl) URL.revokeObjectURL(cloudUrl);
+      cloudUrl = u;
+    });
     // плями кольору в самому небі теж щоразу лягають трохи інакше
-    const sky = document.getElementById('sky');
-    sky.style.setProperty('--b1x', n0(R(6, 30)) + '%');
-    sky.style.setProperty('--b1y', n0(R(18, 42)) + '%');
-    sky.style.setProperty('--b2x', n0(R(70, 94)) + '%');
-    sky.style.setProperty('--b2y', n0(R(6, 26)) + '%');
-    sky.style.setProperty('--b3x', n0(R(36, 64)) + '%');
+    const sc = document.getElementById('sky'), p = (a, b) => R(a, b).toFixed(0) + '%';
+    sc.style.setProperty('--b1x', p(6, 30)); sc.style.setProperty('--b1y', p(18, 42));
+    sc.style.setProperty('--b2x', p(70, 94)); sc.style.setProperty('--b2y', p(6, 26)); sc.style.setProperty('--b3x', p(36, 64));
+  }
+
+  /// ПРОБА (вмикається з адреси ?water=1): сонячна доріжка мерехтить. Два розсипи блискіток по черзі гаснуть і
+  /// розгоряються (CSS) в окремому маленькому шарі над водою — пейзаж при цьому не перемальовується.
+  let glitKey = '';
+  function glitter(v) {
+    const el = document.querySelector('#sky .sky-glit');
+    if (!el || !document.documentElement.dataset.water || v.orb === glitKey) return;
+    glitKey = v.orb;
+    const r = rng(seed + 31);
+    const tile = () => {
+      let s = '';
+      for (let i = 0; i < 90; i++) {
+        const u = Math.pow(r(), 1.5), gx = 95 + ((r() + r() + r() - 1.5) / 1.5) * (5 + u * 80);
+        s += '<ellipse cx="' + gx.toFixed(1) + '" cy="' + (2 + 80 * u).toFixed(1) + '" rx="' + (((2.5 + r() * 8) * (0.4 + u * 1.9)) / 2).toFixed(1) + '" ry="' + (((0.5 + r() * 0.9) * (0.5 + u * 1.3)) / 2).toFixed(2) +
+          '" opacity="' + (0.35 + r() * 0.65).toFixed(2) + '"/>';
+      }
+      return 'url("data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 190 84" preserveAspectRatio="none" fill="rgb(' + v.orb + ')">' + s + '</svg>') + '")';
+    };
+    el.style.setProperty('--gl1', tile());
+    el.style.setProperty('--gl2', tile());
   }
 
   /// Дощ і сніг: три шари глибини, у кожному краплі розкидано випадково — довжина, яскравість, місце. Шар — плитка, що
@@ -333,7 +450,8 @@
         el.hidden = !v.text;
       });
     }
-    clouds(v.kind, v.cloud);
+    clouds(v);
+    glitter(v);
     fall(v.kind, v.code);
     place();
   }
@@ -388,6 +506,7 @@
       o = opts || {};
       const q = new URLSearchParams(location.search);
       if (q.get('seed')) seed = +q.get('seed') | 0;
+      if (q.get('water')) document.documentElement.dataset.water = '1';   // ПРОБА: мерехтіння сонячної доріжки
       if (q.get('sky') || q.get('wx') || q.get('day') || q.get('cover')) fake = { at: parseTime(q.get('sky'), q.get('day')), cover: q.get('cover') != null ? +q.get('cover') : null, wx: WORD[q.get('wx')] ? q.get('wx') : null };
       mount();
       paint();

@@ -132,9 +132,9 @@ header .memenu .badge { position: static; }
 :root {
   --sk0: #050a17; --sk1: #0b1830; --sk2: #1c2f4f; --l1: #162a36; --l2: #112325; --l3: #0e1d17; --l4: #0f1e18; --l4b: #0f1f18;
   --w0: #172a46; --w1: #0c1a20; --pad: #1a3c2b; --sky-orb: #ece8d6; --sky-halo: .16; --sky-oo: 1; --sky-stars: 1;
-  --sky-cl: #37485f; --sky-cl2: #141c24; --sky1: #0b1830; --sky2: #1c2f4f;
+  --sky1: #0b1830; --sky2: #1c2f4f;
   --l1m: #1d3a3f; --lb: #152b2c; --l2m: #1a3337; --l3m: #10211b; --rock: #2c3a38; --rock-l: #4c5a55; --mist: #5d7477; --sky-mist: .5;
-  --tint: #2c5550; --sun-x: 30%; --sh-x: 6px; --shd: #050d0a; --sky-shd: .45; --shade: #04090a; --sh-l: .25; --sh-r: .25; --leaf: #1b3a2c; --pine: #16302a; --leaf-o: 1; --pad-o: 1; --fl-o: 1; --l3t: #132823; --l3tm: #1c3634; --sky-lamp: 1; --l2b: #12262a; --l2bm: #1b3438; --rock2: #2a3836; --rock2-l: #46544f;
+  --tint: #2c5550; --sun-x: 30%; --sh-x: 6px; --shd: #050d0a; --sky-shd: .45; --shade: #04090a; --sh-l: .25; --sh-r: .25; --leaf: #1b3a2c; --leaf2: #1f3f2c; --leaf3: #19352a; --snow: #c9d6da; --snow-o: 0; --bloom-o: 0; --fall-o: 0; --pine: #16302a; --leaf-o: 1; --pad-o: 1; --fl-o: 1; --l3t: #132823; --l3tm: #1c3634; --sky-lamp: 1; --l2b: #12262a; --l2bm: #1b3438; --rock2: #2a3836; --rock2-l: #46544f;
 
 }
 /* ---- фон сайту: не плаский зелений, а туман — дві великі м'які плями кольору неба (--tint міняється разом із
@@ -260,7 +260,24 @@ main { position: relative; z-index: 1; }
 .ld-horizon { fill: none; stroke: var(--mist); stroke-width: 1.2; opacity: .5; }
 .ld-rip { fill: none; stroke: color-mix(in srgb, var(--mist) 70%, #fff); stroke-width: 1; stroke-linecap: round; opacity: .3; }
 .ld-rip2 { fill: none; stroke: var(--shd); stroke-width: 1.2; stroke-linecap: round; opacity: .24; }
-.ld-glit { fill: none; stroke: var(--sky-orb); stroke-width: 1.7; stroke-linecap: round; opacity: calc(var(--sky-oo) * .85); transform: translateX(calc(var(--rx, 1400) * 1px)); }
+.ld-glit { fill: var(--sky-orb); opacity: calc(var(--sky-oo) * .9); transform: translateX(calc(var(--rx, 1400) * 1px)); }
+.ld-g1 { opacity: 1; }
+.ld-g2 { opacity: .6; }
+.ld-g3 { opacity: .3; }
+/* пори року: опале листя на воді (осінь), сніг на гребенях (зима), цвіт на листяних (весна), три відтінки крон */
+.ld-leaves { opacity: var(--fall-o); }
+.ld-lf1 { fill: var(--leaf2); }
+.ld-lf2 { fill: var(--leaf3); }
+.ld-snow { fill: url(#ob-gsn); opacity: var(--snow-o); }
+.ob-ssn0 { stop-color: var(--snow); }
+.ob-ssn1 { stop-color: var(--snow); stop-opacity: .5; }
+.ld-bloom { fill: #f6e9ee; opacity: var(--bloom-o); }
+.ld-crown.ld-c2 { fill: url(#ob-gc2); }
+.ld-crown.ld-c3 { fill: url(#ob-gc3); }
+.ob-sc20 { stop-color: color-mix(in srgb, var(--leaf2) 88%, var(--mist)); }
+.ob-sc21 { stop-color: var(--leaf2); }
+.ob-sc30 { stop-color: color-mix(in srgb, var(--leaf3) 88%, var(--mist)); }
+.ob-sc31 { stop-color: var(--leaf3); }
 .ld-splash { fill: none; stroke: color-mix(in srgb, var(--mist) 70%, #fff); stroke-width: .8; opacity: 0; }
 :root[data-wx="rain"] .ld-splash, :root[data-wx="storm"] .ld-splash { opacity: .5; }
 /* листяні дерева: стовбур є завжди, гілки видно, коли листя облетіло */
@@ -317,22 +334,23 @@ main { position: relative; z-index: 1; }
    й куди плитці їхати (--fall-to), щоб рух не мав шва */
 :root[data-wx="rain"] .sky-fall, :root[data-wx="storm"] .sky-fall, :root[data-wx="snow"] .sky-fall { opacity: 1; animation: sky-fall 2.4s linear infinite; }
 @keyframes sky-fall { to { background-position: var(--fall-to, 0 400px); } }
-/* хмари: окремий шар за пейзажем, малює sky.js (clouds); утричі ширший за потрібне й повільно пливе вбік */
-.sky-clouds { position: absolute; left: 0; top: 0; height: 62%; aspect-ratio: 20 / 1; pointer-events: none; animation: sky-drift 900s linear infinite; }
-.sky-clouds svg { display: block; width: 100%; height: 100%; }
-@keyframes sky-drift { to { transform: translateX(-33.3333%); } }
-.sk-cir { fill: var(--sky-cl); opacity: .3; }
-.sk-pf { fill: url(#sk-g); opacity: .78; }
-.sk-s0 { stop-color: color-mix(in srgb, var(--sky-cl) 76%, #fff); }
-.sk-s1 { stop-color: color-mix(in srgb, var(--sky-cl) 62%, var(--sky-cl2)); }
-.sky-clouds:is([data-band="over"], [data-band="wet"]) .sk-s0 { stop-color: var(--sky-cl); }
-.sky-clouds:is([data-band="over"], [data-band="wet"]) .sk-s1 { stop-color: var(--sky-cl2); }
-.sk-deck { fill: var(--sky-cl2); opacity: .72; }
-.sky-clouds[data-band="fog"] .sk-deck { fill: var(--mist); opacity: .45; }
+/* хмари: окремий шар за пейзажем; картинку малює sky.js (clouds) на полотні, вона повторюється по ширині й повільно
+   пливе вбік рівно на один свій оберт (--cl-p ставить sky.js), тож шва нема */
+.sky-clouds { position: absolute; left: 0; top: 0; height: 62%; width: calc(100% + var(--cl-p, 2208px)); pointer-events: none;
+  background-repeat: repeat-x; background-size: auto 100%; animation: sky-drift 900s linear infinite; }
+@keyframes sky-drift { to { transform: translateX(calc(-1 * var(--cl-p, 2208px))); } }
+/* ПРОБА (?water=1): мерехтіння сонячної доріжки — два розсипи блискіток по черзі гаснуть і розгоряються */
+.sky-glit { display: none; position: absolute; left: var(--ol, 70%); top: var(--wt, 60%); width: var(--gw, 190px); height: var(--wh, 84px); margin-left: calc(var(--gw, 190px) / -2);
+  pointer-events: none; opacity: calc(var(--sky-oo) * .95); }
+:root[data-water] .sky-glit { display: block; }
+:root[data-water] .ld-glit { opacity: calc(var(--sky-oo) * .3); }
+.sky-glit::before, .sky-glit::after { content: ''; position: absolute; inset: 0; background: var(--gl1) center / 100% 100% no-repeat; animation: sky-glit 2.6s ease-in-out infinite alternate; }
+.sky-glit::after { background-image: var(--gl2); animation-delay: -1.3s; animation-direction: alternate-reverse; }
+@keyframes sky-glit { from { opacity: .12; transform: translateX(-1.5px); } to { opacity: 1; transform: translateX(1.5px); } }
 
 .sky-fog { inset: 36% 0 14% 0; opacity: 0; background: linear-gradient(#0000, color-mix(in srgb, var(--sk2) 70%, #fff) 55%, #0000); }
 :root[data-wx="fog"] .sky-fog { opacity: .55; }
-@media (prefers-reduced-motion: reduce) { .sky-fall, .sky-clouds { animation: none !important; } }
+@media (prefers-reduced-motion: reduce) { .sky-fall, .sky-clouds, .sky-glit::before, .sky-glit::after { animation: none !important; } }
 
 /* ---- 🏠 головна «Зараз у Глечиках» (web/home.js) ----
    Верх сторінки стоїть у пейзажі: заголовок — у небі, картки — на березі. Далі — що грає (з великою ▶), хто тут,
