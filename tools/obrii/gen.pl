@@ -96,22 +96,23 @@ sub sosna { my ($x, $y, $h, $w, $cl) = @_; my $c = $cl ? qq{ class="$cl"} : ''; 
   $o . qq{<path$c d="$d"/><path class="ld-snow-s ld-snow-w" d="$sn"/>} }
 # листяне: стовбур до розгалуження, гілки з пагонами (їх видно, коли листя облетіло), крона — один нерівний обрис
 sub leafy { my ($x, $y, $h, $w, $birch) = @_; my $v = $birch ? ' ld-c2' : ('', ' ld-c2', ' ld-c3')[int(rand(3))]; my $tw = .7 + $w * .04; my $th = $h * ($birch ? .5 + rand(.1) : .3 + rand(.12));
+  my $small = $h < 27;                                                   # у дрібних дерев пагонів і зайвих завитків крони не видно — не малюємо (файл легший)
   my $tc = $birch ? 'ld-trunk ld-birch' : 'ld-trunk';
   my $o = sprintf('<path class="' . $tc . '" d="M%.1f %.1fL%.1f %.1fL%.1f %.1fL%.1f %.1fZ"/>', $x - $tw, $y, $x - $tw * .5, $y - $th, $x + $tw * .5, $y - $th, $x + $tw, $y);
   my ($tw_d, $sn_d) = ('', '');
-  for (1 .. 3 + int(rand(3))) { my $a = -1.5708 + (rand() - .5) * 1.9; my $len = ($h - $th) * (.5 + rand(.4));
+  for (1 .. ($small ? 2 : 3 + int(rand(3)))) { my $a = -1.5708 + (rand() - .5) * 1.9; my $len = ($h - $th) * (.5 + rand(.4));
     my ($ex, $ey) = ($x + cos($a) * $len * ($w / ($h - $th)) * .9, $y - $th + sin($a) * $len);
     my ($mx, $my) = ($x + ($ex - $x) * .5 + (rand() - .5) * 2, $y - $th + ($ey - $y + $th) * .55);
     $tw_d .= sprintf('M%.1f %.1fQ%.1f %.1f %.1f %.1f', $x, $y - $th + 1, $mx, $my + 1.5, $ex, $ey);
     $sn_d .= sprintf('M%.1f %.1fL%.1f %.1f', $mx, $my - .2, $ex, $ey - .6);
-    for (1 .. 1 + int(rand(2))) { my $f = .4 + rand(.4); my ($sx, $sy) = ($x + ($ex - $x) * $f, $y - $th + ($ey - $y + $th) * $f);
+    for (1 .. ($small ? 0 : 1 + int(rand(2)))) { my $f = .4 + rand(.4); my ($sx, $sy) = ($x + ($ex - $x) * $f, $y - $th + ($ey - $y + $th) * $f);
       $tw_d .= sprintf('M%.1f %.1fL%.1f %.1f', $sx, $sy, $sx + (rand() - .5) * $w * .35, $sy - $h * (.08 + rand(.1))); } }
   $o .= qq{<path class="ld-twig" d="$tw_d"/><path class="ld-snow-s" d="$sn_d"/>};
   my $cy = $y - $th - ($h - $th) * .46; my ($rx, $ry) = ($w * .5, ($h - $th) * .58);
   my $d = blob($x, $cy, $rx, $ry, .24);
-  for (1 .. 1 + int(rand(2))) { $d .= blob($x + (rand() - .5) * $rx * 1.1, $cy + (rand() - .5) * $ry * .9, $rx * (.45 + rand(.3)), $ry * (.4 + rand(.3)), .34); }
+  for (1 .. ($small ? int(rand(2)) : 1 + int(rand(2)))) { $d .= blob($x + (rand() - .5) * $rx * 1.1, $cy + (rand() - .5) * $ry * .9, $rx * (.45 + rand(.3)), $ry * (.4 + rand(.3)), .34); }
   $o .= qq{<path class="ld-crown$v" d="$d"/>};
-  $o . '<path class="ld-bloom" d="' . join('', map { sprintf('M%.1f %.1fh0', $x + (rand() - .5) * $rx * 1.4, $cy + (rand() - .5) * $ry * 1.4) } 1 .. 4 + int(rand(5))) . '"/>' }
+  $o . '<path class="ld-bloom" d="' . join('', map { sprintf('M%.1f %.1fh0', $x + (rand() - .5) * $rx * 1.4, $cy + (rand() - .5) * $ry * 1.4) } 1 .. ($small ? 2 : 4) + int(rand($small ? 3 : 5))) . '"/>' }
 sub bush { my ($x, $y, $hh, $w) = @_; my $v = ('', ' ld-c2', ' ld-c3')[int(rand(3))]; qq{<path class="ld-crown$v" d="} . dome($x, $y + 1, $w / 2, $hh, .4) . '"/>' }
 # $kind — порода гурту (0..1): сім дерев із десяти в гурті — саме вона
 sub tree { my ($x, $y, $s, $cl, $kind) = @_; my $r = defined $kind && rand() < .7 ? $kind : rand(); my $t;
@@ -122,14 +123,14 @@ sub tree { my ($x, $y, $s, $cl, $kind) = @_; my $r = defined $kind && rand() < .
   sprintf('<g transform="rotate(%.1f %.1f %.1f)">%s</g>', rand(6) - 3, $x, $y, $t) }
 sub trees { my ($f, $x0, $x1, $tf, $skip, $floor) = @_; my @all; my $x = $x0;
   my $ok = sub { my $t = $tf->($_[0]); !($t > .88 || ($skip && $_[0] > $skip->[0] && $_[0] < $skip->[1])) };
-  while ($x < $x1) { my $n = 2 + int(rand(rand(12))); my $cs = .7 + rand(.6); my $kind = rand();
+  while ($x < $x1) { my $n = 3 + int(rand(rand(16))); my $cs = .7 + rand(.6); my $kind = rand();
     for (1 .. $n) { last if $x >= $x1; my $k = 1 - .45 * $tf->($x);
-      if ($ok->($x)) { my $d = rand() < .45 ? rand(5) : 5 + rand() ** 1.5 * 46;          # більшість — на гребені, решта — нижче схилом
+      if ($ok->($x)) { my $d = rand() < .38 ? rand(5) : 5 + rand() ** 1.25 * 52;         # частина — на гребені, решта — нижче схилом, аж до води
         $d = rand(4) if $f->($x) + 3 + $d > $floor - 4;
         my $y = $f->($x) + 3 + $d; push @all, [$y, tree($x, $y, $k * $cs * (.75 + rand(.5)) * (1 + $d * .012), 'ld-pine', $kind)]; }
-      $x += (2.5 + rand(8)) * $k; }
+      $x += (1.8 + rand(5.4)) * $k; }
     if (rand() < .55 && $ok->($x)) { my $k = 1 - .45 * $tf->($x); push @all, [$f->($x) + 6, bush($x + rand(8) - 4, $f->($x) + 4, (6 + rand(5)) * $k, (14 + rand(12)) * $k)]; }   # підлісок на узліссі
-    $x += 3 + rand() ** 2 * 30; }
+    $x += 2 + rand() ** 2.4 * 22; }
   join('', map { $_->[1] } sort { $a->[0] <=> $b->[0] } @all) }
 # сніг: смуга вздовж гребеня, нерівної товщини (видно лише серед зими)
 sub snow { my ($f, $x0, $x1, $t0, $t1, $ph) = @_; my (@a, @b);
@@ -147,37 +148,47 @@ my $rock2L = 'M322 318 L348 305 L358 336 L332 347 Z M392 296 L420 300 L425 331 L
 # дерева на скелі стоять на її обрисі (rockY) і намальовані перед нею — скеля прикриває їхній низ
 my @RK = ([298, 352], [316, 341], [322, 318], [348, 305], [370, 309], [392, 296], [420, 300], [434, 319], [460, 326], [470, 350]);
 sub rockY { my $x = shift; for my $i (0 .. $#RK - 1) { my ($a, $b) = ($RK[$i], $RK[$i + 1]); return $a->[1] + ($b->[1] - $a->[1]) * ($x - $a->[0]) / ($b->[0] - $a->[0]) if $x >= $a->[0] && $x <= $b->[0]; } 352 }
-my $rock2T = join('', map { tree($_->[0], rockY($_->[0]) + 2, $_->[1], 'ld-pine', $_->[2]) } [331, .7, .1], [352, .85, .5], [381, .95, .1], [404, .7, .5], [428, .6, .95], [449, .7, .1]);
-# ---- далекий ліс: зубчастий обрис дрібних дерев уздовж гребенів далеких берегів — берег стає лісистим, а не голим
-sub treeline { my ($f, $x0, $x1, $tf) = @_; my @p = ([$x0, 372], [$x0, $f->($x0) + 3]); my $x = $x0;
-  while ($x < $x1) { my $k = 1 - .6 * $tf->($x); my $w = (3 + rand(5)) * $k; my $y = $f->($x) + 2;
-    if (rand() < .8) { push @p, [$x, $y], [$x + $w / 2 + (rand() - .5) * $w * .3, $y - (5 + rand(9)) * $k], [$x + $w, $f->($x + $w) + 2 + rand(1)]; }
-    else { $w += rand(16) * $k; push @p, [$x, $y], [$x + $w, $f->($x + $w) + 2]; }                                  # прогалина
-    $x += $w; }
-  push @p, [$x1, $f->($x1) + 3], [$x1, 372];
-  '<path d="M' . pts(@p) . 'Z"/>' }
+my $rock2T = join('', map { tree($_->[0], rockY($_->[0]) + 2, $_->[1], 'ld-pine', $_->[2]) } [324, .5, .5], [331, .7, .1], [343, .6, .75], [352, .85, .5], [366, .65, .1], [381, .95, .1], [395, .55, .75], [404, .7, .5], [416, .6, .1], [428, .6, .95], [440, .5, .5], [449, .7, .1], [461, .5, .75]);
+# ---- далекий ліс: дерева рядами по схилах далеких берегів — на гребені густо, нижче рідше й блідіше. Ялини шпилями,
+# листяні шапками; ростуть гаями — де вищі, де нижчі, де прогалина. Ряд порізано на шматки по півсотні одиниць: у
+# кожного свій градієнт (верхівки темні, низ тане), тож дерева не «стоять на лінії», а виринають із туману на схилі.
+sub grove { my ($f, $x0, $x1, $tf, $dy, $hh, $dens) = @_; my ($o, $d, $from) = ('', '', $x0); my $x = $x0; my ($p1, $p2) = (rand(6.28), rand(6.28));
+  while ($x < $x1) { if ($x - $from > 50) { $o .= qq{<path d="$d"/>} if $d ne ''; ($d, $from) = ('', $x); }
+    my $k = 1 - .45 * $tf->($x); my $g = .5 + .5 * sin($x / 67 + $p1) * cos($x / 29 + $p2);
+    my $y = $f->($x) + $dy + rand(2.5) * $k;
+    if ($y > 362 || rand() > $dens * (.7 + .3 * $g)) { $x += (2 + rand(6)) * $k; next; }
+    my $h = $hh * $k * (.6 + rand(.6)) * (.7 + .55 * $g);
+    if (rand() < .55) { my $w = $h * (.34 + rand(.18)); my $t = $x + (rand() - .5) * $w * .2;                     # ялина: шпиль з увігнутими боками
+      $d .= 'M' . pts([$x - $w / 2, $y], [$x - $w * .15, $y - $h * .5], [$t, $y - $h], [$x + $w * .15, $y - $h * .5], [$x + $w / 2, $y]) . 'z'; $x += $w * (.45 + rand(.55)); }
+    else { my $w = $h * (.7 + rand(.6)); my $hc = $h * (.6 + rand(.2)); my $j = (rand() - .5) * $w * .3;          # листяне: кругла шапка
+      $d .= sprintf('M%.1f %.1fq%.1f %.1f %.1f %.1fq%.1f %.1f %.1f %.1fz', $x - $w / 2, $y, -$w * .1, -$hc * 1.05, $w / 2 + $j, -$hc, $w * .6 - $j, -$hc * .05, $w / 2 - $j, $hc); $x += $w * (.45 + rand(.5)); } }
+  $o .= qq{<path d="$d"/>} if $d ne ''; $o }
 srand(57);
-my $farT = treeline(\&yL, -40, 860, sub { ss(($_[0] - 420) / 480) }) . treeline(\&yR, 1150, 2040, sub { ss((1600 - $_[0]) / 490) });
-# ---- верби над водою: стовбур хилиться до річки, з крони звисають пасма — довші з боку води
-sub willow { my ($x, $y, $h, $w, $dir) = @_; my ($tx, $ty) = ($x + $dir * $w * .18, $y - $h * .62);
-  my $o = sprintf('<path class="ld-trunk" d="M%.1f %.1fQ%.1f %.1f %.1f %.1fL%.1f %.1fQ%.1f %.1f %.1f %.1fZ"/>', $x - 1.6, $y, $x - 1 + $dir * $w * .04, $y - $h * .35, $tx - .8, $ty, $tx + .8, $ty,
-    $x + 1.2 + $dir * $w * .06, $y - $h * .35, $x + 1.6, $y);
-  my ($cx, $cy) = ($tx + $dir * $w * .1, $ty - $h * .14); my $d = blob($cx, $cy, $w * .5, $h * .26, .26);
-  for (0 .. 10 + int(rand(5))) { my $u = rand() * 2 - 1; my $sx = $cx + $u * $w * .48; my $len = $h * (.3 + rand(.34)) * (1 - .35 * abs($u)) * ($u * $dir > 0 ? 1.15 : .85); my $ww = 1.6 + rand(2.2);
-    $d .= sprintf('M%.1f %.1fQ%.1f %.1f %.1f %.1fQ%.1f %.1f %.1f %.1fZ', $sx - $ww, $cy, $sx - $ww * .6 + $dir, $cy + $len * .6, $sx + $dir * 1.5, $cy + $len, $sx + $ww * .8 + $dir, $cy + $len * .55, $sx + $ww, $cy); }
-  $o . qq{<path class="ld-crown ld-c2" d="$d"/>} }
-my $willows = willow(548, yML(548) + 2, 50, 58, 1) . willow(498, yML(498) + 3, 38, 44, 1) . willow(1496, yMR(1496) + 2, 52, 60, -1) . willow(1552, yMR(1552) + 3, 40, 46, -1);
-# ---- птахи: дві зграйки в небі (видно лише вдень)
-my $birds = ''; for my $b ([640, 196, 5], [662, 188, 4], [655, 204, 3.5], [688, 182, 4.5], [676, 199, 3], [712, 191, 3.5], [1232, 168, 3], [1250, 176, 2.6], [1218, 178, 2.4]) { my ($x, $y, $s) = @$b;
-  $birds .= sprintf('M%.1f %.1fq%.1f %.1f %.1f %.1fq%.1f %.1f %.1f %.1f', $x - $s, $y - $s * .1, $s * .5, -$s * .6, $s, 0, $s * .5, -$s * .6, $s, $s * .15); }
+my $farT = '';
+for my $row ([2, 18, .97, .9], [11, 18, .62, .56], [22, 18.5, .46, .4], [35, 19, .34, .28], [49, 19.5, .24, .18]) { my ($dy, $hh, $dens, $op) = @$row;
+  $farT .= qq{<g opacity="$op">} . grove(\&yL, -40, 880, sub { ss(($_[0] - 420) / 480) }, $dy, $hh, $dens) . grove(\&yR, 1130, 2040, sub { ss((1600 - $_[0]) / 490) }, $dy, $hh, $dens) . '</g>'; }
+# ---- верба над водою (одна): короткий стовбур хилиться до річки й розходиться надвоє; крона — шапка, з якої донизу
+# звисають довгі пасма різної довжини й ширини: зверху вони зливаються, внизу розходяться; посередині коротші — під ними
+# видно стовбур. Узимку лишаються самі гілки-батоги.
+sub willow { my ($x, $y, $h, $w, $dir) = @_; my ($fx, $fy) = ($x + $dir * $w * .1, $y - $h * .42);                 # розвилка
+  my $o = '<path class="ld-trunk" d="M' . pts([$x - 2.2, $y], [$x - 1.3 + $dir * $w * .03, $y - $h * .22], [$fx - 1.3, $fy], [$fx - $w * .17, $fy - $h * .24], [$fx - .2, $fy - $h * .07],
+    [$fx + $w * .2, $fy - $h * .27], [$fx + 1.3, $fy], [$x + 1.6 + $dir * $w * .05, $y - $h * .22], [$x + 2.2, $y]) . 'Z"/>';
+  my ($cx, $cy) = ($x + $dir * $w * .13, $y - $h * .7);
+  my ($tw, $d) = ('', blob($cx, $cy, $w * .43, $h * .27, .3));
+  for my $i (0 .. 25) { my $u = ($i + rand()) / 26 * 2 - 1; my $sx = $cx + $u * $w * .4; my $sy = $y - $h * (.6 + .24 * (1 - $u * $u)) + rand(3);             # пасмо починається в шапці
+    my $tip = $y - $h * (abs($u) < .25 ? .2 + rand(.18) : rand(.26) + ($u * $dir > 0 ? 0 : .07)); my $ww = 1.7 + rand(2.6); my $sway = $u * $w * .13 + (rand() - .5) * 3;
+    $d .= sprintf('M%.1f %.1fQ%.1f %.1f %.1f %.1fQ%.1f %.1f %.1f %.1fZ', $sx - $ww, $sy, $sx - $ww * 1.1 + $sway * .4, $sy + ($tip - $sy) * .62, $sx + $sway, $tip, $sx + $ww * 1.1 + $sway * .4, $sy + ($tip - $sy) * .55, $sx + $ww, $sy);
+    $tw .= sprintf('M%.1f %.1fQ%.1f %.1f %.1f %.1f', $fx + $u * $w * .08, $fy - $h * .14, $sx - $u * 2, $sy - $h * .16, $sx + $sway, $tip) if $i % 2; }
+  $o . qq{<path class="ld-twig" d="$tw"/><path class="ld-crown ld-c2" d="$d"/>} }
+my $willows = willow(546, yML(546) + 2, 56, 62, 1);
 # ---- дерева на ближніх берегах — великі, майже чіткі
 my $nearT = '';
 for my $side (0, 1) { my $x = $side ? 1772 + rand(20) : 12 + rand(16); my $end = $side ? 1996 : 238;
   while ($x < $end) {
-    for (1 .. 1 + int(rand(3))) { last if $x >= $end; my $s = 1.6 + rand(1.5); my $y = ($side ? y3R($x) : y3L($x)) + 4;
+    for (1 .. 1 + int(rand(4))) { last if $x >= $end; my $s = 1.5 + rand(1.6); my $y = ($side ? y3R($x) : y3L($x)) + 4;
       $nearT .= sprintf('<g transform="rotate(%.1f %.1f %.1f)">%s</g>', rand(5) - 2.5, $x, $y, rand() < .8 ? spruce($x, $y, 38 * $s, 38 * $s * (.3 + rand(.14))) : sosna($x, $y, 40 * $s, 40 * $s * (.4 + rand(.2))));
-      $x += 10 + rand(18); }
-    $x += 10 + rand(26); } }
+      $x += 8 + rand(15); }
+    $x += 7 + rand(20); } }
 
 # ---- підвісний міст: два пілони-рами, несучий трос, підвіски, тонкий настил
 my $br = '';
@@ -285,7 +296,7 @@ my $svg = <<"SVG";
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 90 2000 470" preserveAspectRatio="xMidYMax slice">
   <!-- «Обрій»: Тетерів у Житомирі на головній (web/sky.js ставить кольори змінними, static/polyva.css розкладає їх по шарах).
        Згори вниз: зорі (хмари малює sky.js окремим шаром), далекі пагорби, підвісний пішохідний міст, лісисті береги каньйону з гранітною скелею,
-       вода з камінням і лататтям, ближні береги, передній план з очеретом. Далеке не розмите, а тихе: мало контрасту, нерівні «живі» краї (зсув шумом)
+       вода з камінням і лататтям, ближні береги, передній план з очеретом. Птахів у небі домальовує sky.js (ld-birds) — за погодою, часом і порою року. Далеке не розмите, а тихе: мало контрасту, нерівні «живі» краї (зсув шумом)
        й туман між шарами; чіткий і темний лише передній план. На воді — тіні берегів, дерев і моста: sky.js
        нахиляє й видовжує їх за сонцем (data-shd — рівень води, від якого падає тінь). Геометрію згенеровано скриптом, руками не правити. -->
   <defs>
@@ -294,6 +305,8 @@ my $svg = <<"SVG";
     <filter id="ob-b2" x="-20%" y="-100%" width="140%" height="300%"><feGaussianBlur stdDeviation="34 16"/></filter>
     <filter id="ob-org" filterUnits="userSpaceOnUse" x="-60" y="60" width="2120" height="520"><feTurbulence type="fractalNoise" baseFrequency=".045 .07" numOctaves="2" seed="4" result="n"/><feDisplacementMap in="SourceGraphic" in2="n" scale="6" xChannelSelector="R" yChannelSelector="G"/></filter>
     <filter id="ob-fr" filterUnits="userSpaceOnUse" x="-60" y="60" width="2120" height="520"><feGaussianBlur stdDeviation="5 2.4"/></filter>
+    <!-- тінь лісистих схилів на воді: той самий малюнок (use — щоб не тримати дерева у файлі двічі), розмитий і залитий кольором тіні -->
+    <filter id="ob-frs" filterUnits="userSpaceOnUse" x="-60" y="60" width="2120" height="520"><feGaussianBlur stdDeviation="5 2.4" result="b"/><feFlood class="ob-fshd"/><feComposite operator="in" in2="b"/></filter>
     <linearGradient id="ob-g1" gradientUnits="userSpaceOnUse" x1="0" y1="300" x2="0" y2="352"><stop offset="0" class="ob-s1"/><stop offset="1" class="ob-s1m"/></linearGradient>
     <linearGradient id="ob-g2" gradientUnits="userSpaceOnUse" x1="0" y1="244" x2="0" y2="360"><stop offset="0" class="ob-s2"/><stop offset="1" class="ob-s2m"/></linearGradient>
     <linearGradient id="ob-g2b" gradientUnits="userSpaceOnUse" x1="0" y1="286" x2="0" y2="382"><stop offset="0" class="ob-s2b"/><stop offset="1" class="ob-s2bm"/></linearGradient>
@@ -325,10 +338,11 @@ my $svg = <<"SVG";
     <radialGradient id="ob-gc3" cx=".5" cy=".28" r=".8"><stop offset="0" class="ob-sc30"/><stop offset="1" class="ob-sc31"/></radialGradient>
     <linearGradient id="ob-gsn" x1="0" y1="0" x2="0" y2="1"><stop offset="0" class="ob-ssn0"/><stop offset="1" class="ob-ssn1"/></linearGradient>
     <linearGradient id="ob-gts" x1="0" y1="0" x2="0" y2="1"><stop offset="0" class="ob-sts0"/><stop offset="1" class="ob-sts1"/></linearGradient>
-    <radialGradient id="ob-gr" cx=".5" cy="0" r="1"><stop offset="0" class="ob-sr0"/><stop offset="1" class="ob-sr1"/></radialGradient>
+    <linearGradient id="ob-gr" gradientUnits="userSpaceOnUse" x1="0" y1="356" x2="0" y2="478"><stop offset="0" class="ob-sr0"/><stop offset="1" class="ob-sr1"/></linearGradient>
+    <linearGradient id="ob-gft" x1="0" y1="0" x2="0" y2="1"><stop offset=".5" class="ob-sft0"/><stop offset="1" class="ob-sft1"/></linearGradient>
   </defs>
   <g class="ld-stars">$stars</g>
-  <path class="ld-birds" d="$birds"/>
+  <g class="ld-birds"></g>
   <path class="ld-l1" d="$far"/>
   <rect class="ld-mist" style="--k:.8" x="-40" y="286" width="2080" height="84"/>
   <g class="ld-br">$br</g>
@@ -338,7 +352,7 @@ my $svg = <<"SVG";
   <g><path class="ld-rock" d="$rock"/><path class="ld-rock-l" d="$rockL"/><path class="ld-ts-l" d="M1284 358 L1290 336 L1302 327 L1310 311 L1318 340 L1300 358 Z"/><path class="ld-ts-r" d="M1404 305 L1420 307 L1432 331 L1440 358 L1412 358 Z"/></g>
   <rect class="ld-water" x="-40" y="356" width="2080" height="120"/>
   <g class="ld-shd" clip-path="url(#ob-cw)"><g filter="url(#ob-fr)" data-shd="356" transform="matrix(1 0 0 -.6 0 569.6)"><path d="$bankL"/><path d="$bankR"/><path d="$rock"/>$brS</g></g>
-  <g clip-path="url(#ob-cw)"><ellipse class="ld-refl" cx="0" cy="356" rx="62" ry="50"/></g>
+  <g clip-path="url(#ob-cw)"><path class="ld-refl" filter="url(#ob-b1)" d="M-13 346L13 346L62 482L-62 482Z"/></g>
   <g class="ld-mist" style="--k:.9" filter="url(#ob-b1)"><ellipse cx="1000" cy="354" rx="560" ry="13"/><ellipse cx="330" cy="346" rx="330" ry="11"/><ellipse cx="1680" cy="348" rx="340" ry="11"/></g>
   <path class="ld-horizon" d="M-40 357.2H2040"/>
   <path class="ld-rip2" d="$rip2"/><path class="ld-rip" d="$rip1"/>
@@ -346,9 +360,9 @@ my $svg = <<"SVG";
   <g class="ld-leaves">$leaves</g>
   <g class="ld-splash">$splash</g>
   <g class="ld-st">$st</g>
-  <g class="ld-l2b" filter="url(#ob-org)"><path d="$midL"/><path d="$midR"/>$snowMid$reliefMid$midT</g>
-  <g class="ld-willow" filter="url(#ob-org)">$willows</g>
-  <g class="ld-shd" clip-path="url(#ob-cw)"><g filter="url(#ob-fr)" data-shd="380" transform="matrix(1 0 0 -.6 0 608)"><path d="$midL"/><path d="$midR"/>$midT</g></g>
+  <g id="ob-mid"><g class="ld-l2b" filter="url(#ob-org)"><path d="$midL"/><path d="$midR"/>$snowMid$reliefMid$midT</g>
+  <g class="ld-willow" filter="url(#ob-org)">$willows</g></g>
+  <g class="ld-shd" clip-path="url(#ob-cw)"><g filter="url(#ob-frs)" data-shd="380" transform="matrix(1 0 0 -.6 0 608)"><use href="#ob-mid"/></g></g>
   <g>$rock2T<path class="ld-rock2" d="$rock2"/><path class="ld-rock2-l" d="$rock2L"/><path class="ld-snow" d="M322 318 L348 305 L370 309 L392 296 L420 300 L434 319 L420 307 L394 304 L372 316 L350 312 L330 323 Z"/><path class="ld-ts-l" d="M290 380 L298 352 L316 341 L322 318 L332 347 L318 380 Z"/><path class="ld-ts-r" d="M434 319 L460 326 L470 350 L486 380 L452 380 L444 356 Z"/></g>
   <g class="ld-mist" style="--k:.5" filter="url(#ob-b1)"><ellipse cx="250" cy="378" rx="330" ry="9"/><ellipse cx="1760" cy="378" rx="320" ry="9"/></g>
   <g filter="url(#ob-b0)">$fl_soft</g>
@@ -366,5 +380,5 @@ SVG
 # числа в обрисах: без «.0», без нуля перед крапкою, без зайвих пробілів — на вигляд не впливає
 sub compact { my $d = shift; $d =~ s/(\d)\.0(?!\d)/$1/g; $d =~ s/(?<![\d.])0\.(\d)/.$1/g; $d =~ s/ -/-/g; $d =~ s/([A-Za-z]) /$1/g; $d }
 $svg =~ s/ d="([^"]+)"/' d="' . compact($1) . '"'/ge;
-open O, ">:utf8", "$OUT/obrii.svg" or die; print O $svg; close O; print length($svg), " bytes obrii\n";
+open O, ">:utf8", "$OUT/obrii.svg" or die; print O $svg; close O; print length($svg), " bytes obrii; trees: ", scalar(() = $svg =~ /<g transform="rotate/g), "\n";
 

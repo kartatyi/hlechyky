@@ -131,7 +131,7 @@ header .memenu .badge { position: static; }
    (krok.js, 10 разів на секунду), а в кого «менше руху» — не рухається зовсім. Типові значення — ясна ніч. */
 :root {
   --sk0: #050a17; --sk1: #0b1830; --sk2: #1c2f4f; --l1: #162a36; --l2: #112325; --l3: #0e1d17; --l4: #0f1e18; --l4b: #0f1f18;
-  --w0: #172a46; --w1: #0c1a20; --pad: #1a3c2b; --sky-orb: #ece8d6; --birch: #a9b2ac; --sun-c: #fff7d6; --moon-c: #ece8d6; --sun-o: 1; --moon-o: 0; --fly-o: 0; --sky-halo: .16; --sky-oo: 1; --sky-stars: 1;
+  --w0: #172a46; --w1: #0c1a20; --pad: #1a3c2b; --sky-orb: #ece8d6; --birch: #a9b2ac; --refl-w: 1; --sun-c: #fff7d6; --moon-c: #ece8d6; --sun-o: 1; --moon-o: 0; --fly-o: 0; --sky-halo: .16; --sky-oo: 1; --sky-stars: 1;
   --sky1: #0b1830; --sky2: #1c2f4f;
   --l1m: #1d3a3f; --lb: #152b2c; --l2m: #1a3337; --l3m: #10211b; --rock: #2c3a38; --rock-l: #4c5a55; --mist: #5d7477; --sky-mist: .5;
   --tint: #2c5550; --sun-x: 30%; --sh-x: 6px; --shd: #050d0a; --sky-shd: .45; --shade: #04090a; --sh-l: .25; --sh-r: .25; --leaf: #1b3a2c; --leaf2: #1f3f2c; --leaf3: #19352a; --snow: #c9d6da; --snow-o: 0; --bloom-o: 0; --fall-o: 0; --pine: #16302a; --leaf-o: 1; --pad-o: 1; --fl-o: 1; --l3t: #132823; --l3tm: #1c3634; --sky-lamp: 1; --l2b: #12262a; --l2bm: #1b3438; --rock2: #2a3836; --rock2-l: #46544f;
@@ -267,7 +267,9 @@ main { position: relative; z-index: 1; }
 .ld-horizon { fill: none; stroke: var(--mist); stroke-width: 1.2; opacity: .5; }
 .ld-rip { fill: none; stroke: color-mix(in srgb, var(--mist) 70%, #fff); stroke-width: 1; stroke-linecap: round; opacity: .3; }
 .ld-rip2 { fill: none; stroke: var(--shd); stroke-width: 1.2; stroke-linecap: round; opacity: .24; }
-.ld-glit { fill: var(--sky-orb); opacity: calc(var(--sky-oo) * .9); transform: translateX(calc(var(--rx, 1400) * 1px)); }
+/* доріжка світла на воді: колір — того, що світить (сонце, місяць; у затемнення — мідно-червона), яскравість і ширина —
+   за фазою й розміром (--sky-oo, --refl-w): під серпом вузька й тьмяна, під повнею широка */
+.ld-glit { fill: var(--sky-orb); opacity: calc(var(--sky-oo) * .9); transform: translateX(calc(var(--rx, 1400) * 1px)) scaleX(var(--refl-w)); }
 .ld-g1 { opacity: 1; }
 .ld-g2 { opacity: .6; }
 .ld-g3 { opacity: .3; }
@@ -293,17 +295,17 @@ main { position: relative; z-index: 1; }
 /* сніг на деревах: латки на гілках ялин, шапки на кронах сосон, смужки на гілках листяних */
 .ld-snow-s { fill: none; stroke: var(--snow); stroke-width: .9; stroke-linecap: round; opacity: calc(var(--snow-o) * .8); }
 .ld-snow-s.ld-snow-w { stroke-width: 1.7; }
-/* ТИМЧАСОВО: пропозиції до лісу на вибір — вмикаються з адреси ?x=far,birch,willow,birds (sky.js ставить data-x на <html>).
-   Після вибору вибране лишити ввімкненим без [data-x], решту прибрати разом із відповідними шматками tools/obrii/gen.pl. */
-.ld-l2t { display: none; fill: url(#ob-g2); filter: blur(1.2px); }         /* far — далекий ліс уздовж гребенів далеких берегів */
-:root[data-x~="far"] .ld-l2t { display: block; }
-.ld-birch { fill: var(--l3); }                                             /* birch — берези зі світлими стовбурами */
-:root[data-x~="birch"] .ld-birch { fill: var(--birch); }
-.ld-willow { display: none; }                                              /* willow — верби над водою */
-:root[data-x~="willow"] .ld-willow { display: block; }
-.ld-birds { display: none; fill: none; stroke: var(--shd); stroke-width: 1.1; stroke-linecap: round; stroke-linejoin: round; opacity: calc(.75 * (1 - var(--sky-lamp))); }   /* birds — птахи (вдень) */
-:root[data-x~="birds"] .ld-birds { display: block; }
-.ld-refl { fill: url(#ob-gr); transform: translateX(calc(var(--rx, 1400) * 1px)); }
+/* далекий ліс на далеких берегах: дерева рядами, темніші за схил, низ кожного тане в тумані; нижчі ряди блідіші (прозорість — у малюнку) */
+.ld-l2t { fill: url(#ob-gft); filter: blur(.5px); }
+.ob-sft0 { stop-color: color-mix(in srgb, var(--l2b) 72%, var(--l2)); }
+.ob-sft1 { stop-color: color-mix(in srgb, var(--l2b) 72%, var(--l2)); stop-opacity: 0; }
+.ld-birch { fill: var(--birch); }                                          /* берези: світлі стовбури */
+.ld-willow .ld-twig { stroke-width: .6; }                                  /* верба: узимку — тонкі батоги */
+/* птахи: їх домальовує sky.js (товщина й прозорість кожної зграї — там); надвечір тьмяніють, уночі їх нема */
+.ld-birds { fill: none; stroke: var(--shd); stroke-linecap: round; stroke-linejoin: round; opacity: calc(.85 * (1 - var(--sky-lamp))); }
+.ob-fshd { flood-color: var(--shd); }                                      /* тінь лісистих схилів на воді (фільтр ob-frs) */
+
+.ld-refl { fill: url(#ob-gr); transform: translateX(calc(var(--rx, 1400) * 1px)) scaleX(var(--refl-w)); }
 /* пора року: латаття є з весни до осені, жовті глечики цвітуть улітку, крони листяних восени руді, взимку голі */
 .ld-pad { fill: url(#ob-gpad); opacity: var(--pad-o); }
 .ob-spd0 { stop-color: color-mix(in srgb, var(--pad) 74%, var(--mist)); }
