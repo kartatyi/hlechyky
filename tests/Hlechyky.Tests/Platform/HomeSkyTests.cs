@@ -52,4 +52,38 @@ public class HomeSkyTests
         // міст через Тетерів — те, за чим пейзаж упізнають
         Assert.Contains("class=\"ld-br\"", Web("static/obrii.svg"));
     }
+
+    /// <summary>
+    /// «Смуга річки»: у чотирьох розділах угорі той самий пейзаж низькою смугою й назва розділу в небі. Зшито трьома
+    /// файлами: розмітка назв (index.html), клас sky-strip на body (app.js) і правила під нього (polyva.css). За столом
+    /// гри смуги бути не може — там потрібне місце.
+    /// </summary>
+    [Theory]
+    [InlineData("viewEfir", "Ефір")]
+    [InlineData("viewLib", "Бібліотека")]
+    [InlineData("viewGames", "Ігри")]
+    [InlineData("viewStats", "Хто скільки")]
+    public void Each_section_opens_with_its_name_in_the_sky(string view, string title)
+    {
+        var html = Web("index.html");
+        int at = html.IndexOf($"id=\"{view}\"", StringComparison.Ordinal);
+        Assert.True(at >= 0, $"нема #{view}");
+        var head = html.Substring(at, Math.Min(900, html.Length - at));
+        Assert.Matches(@"class=""hm-skybox sec-top"">.*<h1>" + Regex.Escape(title) + "</h1>", head);
+        Assert.Contains("data-sky-text", head);   // поруч із рядком розділу — погода, як на головній
+    }
+
+    [Fact]
+    public void The_strip_is_switched_by_the_route_and_gives_way_to_a_game_table()
+    {
+        var css = Web("static/polyva.css");
+        var js = Web("app.js");
+        Assert.Matches(@"classList\.toggle\('sky-strip',[^;]*'efir'[^;]*'lib'[^;]*'games'[^;]*'stats'", js);
+        Assert.Contains("body.sky-strip:not(.g-room) .sky-scene", css);
+        Assert.Contains("body.sky-strip:not(.g-room) .sec-top { display: block; }", css);
+        Assert.Matches(@"(?m)^\.sec-top \{ display: none; \}", css);   // поза смугою (за столом гри) назви розділу нема
+        // жодне правило смуги не діє за столом гри
+        var loose = Regex.Matches(css, @"(?m)^body\.sky-strip(?!:not\(\.g-room\))[^{]*\{").Select(m => m.Value).Where(r => !r.Contains(".hellobar")).ToList();
+        Assert.True(loose.Count == 0, "правила смуги без :not(.g-room): " + string.Join(" ", loose));
+    }
 }

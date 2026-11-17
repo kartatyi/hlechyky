@@ -2892,6 +2892,8 @@
     const whoNick = r === 'who' ? decodeURIComponent(tail) : '';
     $('hdrTitle').textContent = r === 'who' && !sameNick(whoNick, me.nick) ? whoNick : r === 'who' ? 'Я' : ROUTE_TITLE[r];
     for (const name of ROUTES) document.body.classList.toggle('route-' + name, r === name);
+    // «Смуга річки»: у цих розділах угорі стоїть низька смуга того самого пейзажу, що на головній (static/polyva.css).
+    document.body.classList.toggle('sky-strip', r === 'efir' || r === 'lib' || r === 'games' || r === 'stats');
     document.querySelectorAll('#mainNav button, .mtabs button').forEach((b) => b.classList.toggle('on',
       b.dataset.route === r || (r === 'chat' && b.dataset.route === 'chat')));
     $('meBtn').classList.toggle('on', r === 'who' && sameNick(whoNick, me.nick));

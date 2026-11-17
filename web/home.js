@@ -135,7 +135,7 @@
       return true;
     }).slice(0, 8);
     if (list.length < 3) return '';
-    const total = ((g.catalog && g.catalog.games) || []).filter((x) => !x.hidden).length;
+    const total = g.total || 0;
     return '<div class="hm-shelf-h"><h2>У що граємо</h2><a href="#games">усі ' + (total || '') + ' →</a></div><div class="hm-posters">'
       + list.map((p) => {
         const c = by[p.game];
@@ -236,7 +236,37 @@
     else if (act === 'chat') o.openChat();
   }
 
+  // ---------------------------------------------------------------------------------------------
+  // назви розділів у небі: над смугою пейзажу вгорі «Ефіру» й «Ігор» — по одному живому рядку, як «Одна душа тут…»
+  // на головній (розмітка — .sec-top в index.html). Малюємо завжди, не лише коли відкрита головна: рядок має бути
+  // свіжий тієї миті, коли людина перейшла в розділ.
+  // ---------------------------------------------------------------------------------------------
+  const topSig = {};
+  function tops() {
+    if (!o) return;
+    const set = (id, text) => {
+      if (topSig[id] === text) return;
+      topSig[id] = text;
+      const box = document.querySelector('[data-top="' + id + '"]');
+      if (box) box.textContent = text;
+    };
+    const st = o.state();
+    if (st) {
+      const n = st.now, q = (st.queue || []).length;
+      const air = n && n.track && o.onAir(n) ? 'Грає ' + (n.track.artist ? n.track.artist + ' — ' : '') + n.track.title : 'Зараз тиша';
+      set('efir', air + (q ? ', у черзі ' + plural(q, 'пісня', 'пісні', 'пісень') : ', черга порожня') + '.');
+    }
+    const g = G();
+    const total = o.me.games === false || !g ? 0 : g.total || 0;
+    if (total) {
+      const playing = rooms().filter((r) => r.status === 'playing').length, waiting = rooms().filter((r) => r.status === 'lobby').length;
+      set('games', plural(total, 'гра', 'гри', 'ігор') + (playing ? ', за ' + plural(playing, 'столом', 'столами', 'столами') + ' грають'
+        : waiting ? ', ' + plural(waiting, 'стіл чекає', 'столи чекають', 'столів чекають') + ' гравців' : '') + '.');
+    }
+  }
+
   function paint() {
+    tops();
     if (!shown || !root) return;
     const st = o.state();
     if (!st) return;
@@ -290,7 +320,13 @@
       load(false);
       paint();
     },
-    hide() { shown = false; },
+    hide() {
+      shown = false;
+      // Каталог ігор міг ще їхати, коли ми рахували рядок для «Ігор».
+      const g = G();
+      if (g && g.ready && !topSig.games) g.ready().then(tops).catch(() => {});
+      tops();
+    },
     /// Щось змінилось: стан ефіру, столи, балачки — app.js кличе з render() і з подій хаба.
     update() { paint(); },
     tick,

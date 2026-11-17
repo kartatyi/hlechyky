@@ -662,23 +662,6 @@
       if (q.get('seed')) seed = +q.get('seed') | 0;
 
       if (q.get('sky') || q.get('wx') || q.get('day') || q.get('cover')) fake = { at: parseTime(q.get('sky'), q.get('day')), cover: q.get('cover') != null ? +q.get('cover') : null, wx: WORD[q.get('wx')] ? q.get('wx') : null };
-      // ТИМЧАСОВО: проби вигляду розділів (?sec=a|b|c) — після вибору прибрати разом зі static/rozdily-proby.css.
-      // Рядки під назвами — приклад: справжні («що грає», «скільки ігор») підключу після вибору.
-      const sec = q.get('sec');
-      if (/^[abc]$/.test(sec || '')) {
-        document.documentElement.dataset.sec = sec;
-        const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = '/static/rozdily-proby.css'; document.head.appendChild(css);
-        const TOP = { viewEfir: ['Ефір', 'Зараз тиша, черга порожня.'], viewLib: ['Бібліотека', 'Усе, що вже грало, улюблене й плейлисти.'],
-          viewGames: ['Ігри', '95 ігор. Щоденних сьогодні 0 з 11.'], viewStats: ['Хто скільки', 'Тиждень із 11 листопада.'] };
-        for (const id of Object.keys(TOP)) {
-          const v = document.getElementById(id);
-          if (!v) continue;
-          const d = document.createElement('div');
-          d.className = 'hm-skybox sec-top';
-          d.innerHTML = '<div class="hm-top"><h1>' + TOP[id][0] + '</h1><p class="hm-lead">' + TOP[id][1] + '<span class="hm-wx" data-sky-text hidden></span></p></div>';
-          v.prepend(d);
-        }
-      }
       mount();
       paint();
       setInterval(() => { if (!document.hidden) { paint(); load(false); } }, 5 * 60000);
