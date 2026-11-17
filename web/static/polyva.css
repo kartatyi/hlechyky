@@ -194,8 +194,11 @@ header::after { content: ''; position: absolute; left: 0; right: 0; top: 100%; h
   -webkit-mask-image: linear-gradient(#000 calc(100% - 110px), transparent); mask-image: linear-gradient(#000 calc(100% - 110px), transparent);
   /* сцена починається від самого верху сторінки: шапка лежить у небі, а не над ним */
   height: calc(var(--sky-h, 340px) + var(--hdr-h, 56px) + var(--bars-h, 0px));
+  /* Небо — не рівний градієнт, а плями кольорів цієї миті: середина неба ліворуч, зеніт із теплим відтінком праворуч
+     угорі, смуга світла лежить на обрії. Перший шар — затемнення під шапку. */
   background: linear-gradient(180deg, color-mix(in srgb, var(--bg) 62%, transparent) 0, transparent 120px),
-    linear-gradient(180deg, var(--sk0) 0%, var(--sk1) 46%, var(--sk2) 76%);
+    radial-gradient(58% 80% at 14% 30%, var(--sk1), transparent 70%), radial-gradient(50% 75% at 86% 16%, color-mix(in srgb, var(--sk0), var(--tint)), transparent 70%),
+    radial-gradient(95% 46% at 50% 58%, var(--sk2), transparent 74%), var(--sk0);
 }
 body.route-home .sky-scene { display: block; }
 /* Одна сторінка — один світ: шапка прозора, поки не прокрутили; далі сторінка — той самий туман. */
@@ -218,8 +221,9 @@ main { position: relative; z-index: 1; }
 .ld-stars { fill: #fff; opacity: var(--sky-stars); }
 .ld-cirrus { fill: var(--sky-cl); opacity: var(--sky-cirrus); }
 .ld-deck { fill: var(--sky-cl); opacity: calc(var(--sky-deck) * .55); }
-.ld-l1 { fill: url(#ob-g1); }
-.ld-br { fill: url(#ob-gbr); }
+/* далеке — в тумані: що далі, то розмитіше; ближній план чіткий */
+.ld-l1 { fill: url(#ob-g1); filter: blur(5px); }
+.ld-br { fill: url(#ob-gbr); filter: blur(.7px); }
 .ld-br-c { fill: none; stroke: url(#ob-gbr); stroke-width: 1.5; }
 .ld-br-w { fill: none; stroke: url(#ob-gbr); stroke-width: .7; }
 .ob-sb0 { stop-color: var(--lb); }
@@ -227,12 +231,12 @@ main { position: relative; z-index: 1; }
 /* ліхтарі на мосту: засвічуються, коли сутеніє */
 .ld-lamp { fill: #ffdf9c; opacity: var(--sky-lamp, 0); }
 .ld-lamp-g { fill: #ffc65c; opacity: .22; }
-.ld-l2 { fill: url(#ob-g2); }
+.ld-l2 { fill: url(#ob-g2); filter: blur(2.6px); }
 .ld-l2b { fill: url(#ob-g2b); }
 .ld-rock2 { fill: url(#ob-grk2); }
-.ob-sk20 { stop-color: var(--rock2-l); }
+.ob-sk20 { stop-color: color-mix(in srgb, var(--rock2) 84%, var(--rock2-l)); }
 .ob-sk21 { stop-color: var(--rock2); }
-.ld-rock2-l { fill: var(--rock2-l); opacity: .2; }
+.ld-rock2-l { fill: var(--rock2-l); opacity: .12; }
 .ld-tr3 { fill: url(#ob-g3t); }
 .ob-s3t { stop-color: var(--l3t); }
 .ob-s3tm { stop-color: var(--l3tm); }
@@ -241,7 +245,7 @@ main { position: relative; z-index: 1; }
 .ld-shd * { fill: var(--shd) !important; stroke: none !important; }
 .ob-s2b { stop-color: var(--l2b); }
 .ob-s2bm { stop-color: var(--l2bm); }
-.ld-rock { fill: url(#ob-grk); }
+.ld-rock { fill: url(#ob-grk); filter: blur(1.4px); }
 .ob-sk0 { stop-color: var(--rock-l); }
 .ob-sk1 { stop-color: var(--rock); }
 .ld-rock-l { fill: var(--rock-l); opacity: .5; }
@@ -250,7 +254,7 @@ main { position: relative; z-index: 1; }
 .ob-st0 { stop-color: color-mix(in srgb, var(--l3) 66%, var(--mist)); }
 .ob-st1 { stop-color: var(--l3); }
 /* туман між шарами: --k — частка для цього пасма, --sky-mist — скільки його зараз узагалі */
-.ld-mist { fill: url(#ob-gm); opacity: calc(var(--sky-mist) * var(--k, 1)); }
+.ld-mist { fill: url(#ob-gm); opacity: calc(var(--sky-mist) * var(--k, 1) * 1.7); }
 .ld-l4 { fill: url(#ob-g4); }
 .ld-water { fill: url(#ob-gw); }
 .ld-glint { fill: none; stroke: var(--mist); stroke-width: 1.4; stroke-linecap: round; opacity: .2; }
@@ -265,7 +269,7 @@ main { position: relative; z-index: 1; }
 .ld-fl-c { fill: #a86a08; opacity: var(--fl-o); }
 .ld-fl-glow { fill: #f4c542; opacity: calc(var(--fl-o) * .16); }
 .ld-crown { fill: url(#ob-gc); opacity: var(--leaf-o); }
-.ob-sc0 { stop-color: color-mix(in srgb, var(--leaf) 72%, var(--mist)); }
+.ob-sc0 { stop-color: color-mix(in srgb, var(--leaf) 88%, var(--mist)); }
 .ob-sc1 { stop-color: var(--leaf); }
 /* об'єм: тіньовий бік дерев і скель, тіньовий бік схилів, складки рельєфу */
 .ld-ts-l { fill: url(#ob-gts); opacity: var(--sh-l); }
@@ -280,7 +284,7 @@ main { position: relative; z-index: 1; }
 .ob-sd1 { stop-color: var(--shd); stop-opacity: 1; }
 .ob-sd0 { stop-color: var(--shd); stop-opacity: 0; }
 .ld-pine { fill: url(#ob-gp); }
-.ob-sp0 { stop-color: color-mix(in srgb, var(--pine) 70%, var(--mist)); }
+.ob-sp0 { stop-color: color-mix(in srgb, var(--pine) 90%, var(--mist)); }
 .ob-sp1 { stop-color: var(--pine); }
 .ld-reed { stroke: url(#ob-grd); fill: url(#ob-grd); }
 .ob-srd0 { stop-color: color-mix(in srgb, var(--l4b) 58%, var(--sk2)); }

@@ -8,7 +8,6 @@
     <filter id="ob-b1" x="-20%" y="-200%" width="140%" height="500%"><feGaussianBlur stdDeviation="14 5"/></filter>
     <filter id="ob-b2" x="-20%" y="-100%" width="140%" height="300%"><feGaussianBlur stdDeviation="34 16"/></filter>
     <filter id="ob-org" filterUnits="userSpaceOnUse" x="-60" y="60" width="2120" height="520"><feTurbulence type="fractalNoise" baseFrequency=".045 .07" numOctaves="2" seed="4" result="n"/><feDisplacementMap in="SourceGraphic" in2="n" scale="6" xChannelSelector="R" yChannelSelector="G"/></filter>
-    <filter id="ob-wc" filterUnits="userSpaceOnUse" x="-60" y="60" width="2120" height="520"><feTurbulence type="fractalNoise" baseFrequency=".018 .03" numOctaves="3" seed="9" result="n"/><feDisplacementMap in="SourceGraphic" in2="n" scale="18" xChannelSelector="R" yChannelSelector="G"/><feGaussianBlur stdDeviation=".8"/></filter>
     <filter id="ob-fr" filterUnits="userSpaceOnUse" x="-60" y="60" width="2120" height="520"><feGaussianBlur stdDeviation="5 2.4"/></filter>
     <linearGradient id="ob-g1" gradientUnits="userSpaceOnUse" x1="0" y1="300" x2="0" y2="352"><stop offset="0" class="ob-s1"/><stop offset="1" class="ob-s1m"/></linearGradient>
     <linearGradient id="ob-g2" gradientUnits="userSpaceOnUse" x1="0" y1="244" x2="0" y2="360"><stop offset="0" class="ob-s2"/><stop offset="1" class="ob-s2m"/></linearGradient>

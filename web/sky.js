@@ -130,6 +130,11 @@
 
     const l1 = mix(sk[2], g, 0.24), l2 = mix(sk[2], g, 0.54), l2b = mix(sk[2], g, 0.76), l3 = mix(mix(g, BG, 0.34), sk[2], 0.1);
     const l3e = mix(mix(gE, BG, 0.34), sk[2], 0.1);
+    // Вибраний вигляд («усе разом»): далеке лишається в кольорах неба й тумані, а ближній план — темні силуети нашого
+    // зеленого. Від пори року й світла в них лишається відтінок (seasonal), щоб осінь і зима читались і тут.
+    const near = (green, seasonal, hint) => mix(mix(sk[1], BG, green), seasonal, hint);
+    const l2bN = near(0.74, l2b, 0.08), l3N = near(0.88, l3, 0.1), l3tN = near(0.86, mix(l3e, sk[2], 0.3), 0.1);
+    const rock2N = near(0.62, mix(l2b, mix(sk[2], hex('#b9a89a'), 0.5), 0.34), 0.08);
 
     pos = { alt: s.alt, ha: s.ha, top: s.top, day: s.alt > -4 };
     const sinE = Math.sin(pos.day ? s.ha : s.ha - Math.PI);   // де світило: −1 — ліворуч, +1 — праворуч
@@ -145,33 +150,33 @@
         '--rock': css(mix(l2, mix(sk[2], hex('#b9a89a'), 0.5), 0.26)), '--rock-l': css(mix(l2, mix(sk[2], hex('#e6d8c8'), 0.5), 0.4)),
         '--sky-lamp': clamp(1 - t * 2.4, 0, 1).toFixed(2),
         // ближчі схили з деревами: темніші за далекі береги, низ — у тумані; скеля на них — у тому ж світлі
-        '--l2b': css(l2b), '--l2bm': css(mix(l2b, mist, 0.42)),
-        '--rock2': css(mix(l2b, mix(sk[2], hex('#b9a89a'), 0.5), 0.34)), '--rock2-l': css(mix(l2b, mix(sk[2], hex('#e6d8c8'), 0.5), 0.5)),
-        '--l3': css(l3), '--l3m': css(mix(l3, mist, 0.16)), '--l4': css(l4), '--l4b': css(mix(l4, BG, 0.5)),
+        '--l2b': css(l2bN), '--l2bm': css(mix(l2bN, mist, 0.08)),
+        '--rock2': css(rock2N), '--rock2-l': css(mix(rock2N, mix(sk[2], hex('#e6d8c8'), 0.5), 0.4)),
+        '--l3': css(l3N), '--l3m': css(mix(l3N, mist, 0.06)), '--l4': css(l4), '--l4b': css(mix(l4, BG, 0.5)),
         '--mist': css(mist), '--sky-mist': Math.min(1, c.mist * (k === 'fog' ? 1.8 : wet ? 1.25 : 1)).toFixed(2),
         // спільний колір сторінки: колір обрію цієї миті — ним підсвічено рамки й блоки по всьому сайту
         // звідки падає світло на блоки: сонце (вночі місяць) іде зліва направо — відблиск на блоках іде за ним
         '--sun-x': Math.round(50 + 42 * Math.sin(s.alt > -4 ? s.ha : s.ha - Math.PI)) + '%',
         '--sh-x': Math.round(-18 * Math.sin(s.alt > -4 ? s.ha : s.ha - Math.PI)) + 'px',
         // ближні сосни: не чорні силуети, а в тому ж серпанку, що й усе
-        '--l3t': css(mix(l3e, sk[2], 0.3)), '--l3tm': css(mix(mix(l3e, sk[2], 0.3), mist, 0.45)),
+        '--l3t': css(l3tN), '--l3tm': css(mix(l3tN, mist, 0.06)),
         // тіні на воді: темні, а в хмарну погоду слабші (сонця нема — нема й тіні)
         // Тінь бере колір неба над нею: удень синьо-зелена, на заході синя, вночі майже чорна.
         '--shd': css(mix(mix(sk[0], g, 0.3), hex('#020806'), 0.6)), '--sky-shd': ((1 - cover) * 0.5 + 0.1).toFixed(2),
         '--shade': css(mix(mix(c.sk[0], grey[0], cover), hex('#020504'), 0.36)),
         // об'єм: тіньовий бік дерев, схилів і скель — з боку, протилежного сонцю; у хмарну погоду майже зникає
-        '--sh-l': (clamp(0.5 + sinE * 2, 0, 1) * 0.5 * (1 - cover * 0.7)).toFixed(2),
-        '--sh-r': (clamp(0.5 - sinE * 2, 0, 1) * 0.5 * (1 - cover * 0.7)).toFixed(2),
+        '--sh-l': (clamp(0.5 + sinE * 2, 0, 1) * 0.4 * (1 - cover * 0.7)).toFixed(2),
+        '--sh-r': (clamp(0.5 - sinE * 2, 0, 1) * 0.4 * (1 - cover * 0.7)).toFixed(2),
         // пора року: листя крон (взимку дерева голі), латаття й жовті глечики — наш знак, тож є завжди, крім зими (грудень — лютий)
-        '--leaf': css(mix(sk[2], tone(g0, season(LEAF)), 0.76)), '--leaf-o': (1 - 0.72 * wWin).toFixed(2),
-        '--pine': css(mix(sk[2], gE, 0.8)),
+        '--leaf': css(near(0.72, mix(sk[2], tone(g0, season(LEAF)), 0.76), 0.3)), '--leaf-o': (1 - 0.72 * wWin).toFixed(2),
+        '--pine': css(near(0.8, mix(sk[2], gE, 0.8), 0.12)),
         '--pad-o': clamp((0.62 - wWin) * 5, 0, 1).toFixed(2), '--fl-o': clamp((0.62 - wWin) * 5, 0, 1).toFixed(2),
         '--tint': css(mix(mix(c.sk[2], grey[2], cover), g, 0.12)),
         '--w0': css(mix(mix(sk[2], sk[1], 0.3), mix(sk[2], hex('#ffffff'), 0.3), ice * 0.6)),
         '--w1': css(mix(mix(sk[1], g, 0.62), mix(sk[1], hex('#dfe8ea'), 0.35), ice * 0.55)),
         '--pad': css(mix(g, hex('#3f9e68'), 0.25 + 0.25 * t)),
         '--sky-orb': css(mix(pos.day ? c.orb : P.night.orb, sk[2], 0.1)),
-        '--sky-halo': (c.halo * 0.9 * (1 - cover)).toFixed(3),
+        '--sky-halo': (Math.max(c.halo * 1.3, 0.5) * (1 - cover)).toFixed(3),
         '--sky-oo': clamp(1 - cover * 1.05, 0, 1).toFixed(2),
         '--sky-stars': (c.stars * (1 - clamp(cloud / 100, 0, 1) * 0.9)).toFixed(2),
         '--sky-cl': css(mix(sk[2], hex('#ffffff'), 0.12 + 0.38 * t)),
@@ -288,14 +293,6 @@
     init(opts) {
       o = opts || {};
       const q = new URLSearchParams(location.search);
-      // ТИМЧАСОВО: проби стилю пейзажу (?art=vol|cut|poster|…), див. static/obrii-proby.css — прибрати після вибору
-      if (q.get('art')) {
-        document.documentElement.dataset.art = q.get('art');
-        const l = document.createElement('link');
-        l.rel = 'stylesheet';
-        l.href = '/static/obrii-proby.css';
-        document.head.appendChild(l);
-      }
       if (q.get('sky') || q.get('wx') || q.get('day')) fake = { at: parseTime(q.get('sky'), q.get('day')), wx: WORD[q.get('wx')] ? q.get('wx') : null };
       mount();
       paint();
