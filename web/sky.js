@@ -267,7 +267,9 @@
     // Беремо середнє між «сьогоднішнім полуднем» і «літнім»: узимку опівдні світило стоїть на півдорозі, улітку — вгорі.
     // Нижче обрію воно тоне в далеких пагорбах. Угорі сцени лежить шапка сайту — під неї світила не заходять.
     const hdr = (document.querySelector('header') || {}).offsetHeight || 56;
-    const horizon = HORIZON * s, room = Math.max(60, H - horizon - hdr - 48);
+    // Малюнок може звисати нижче сцени (низька смуга пейзажу в розділах): тоді обрій ближче до її низу.
+    const off = svg ? parseFloat(getComputedStyle(svg).bottom) || 0 : 0;
+    const horizon = HORIZON * s + off, room = Math.max(60, H - horizon - hdr - 48);
     const yOf = (b) => Math.min(H - hdr - 36, horizon + (b.alt >= 0 ? (b.alt / Math.max(12, Math.sqrt(b.top * pos.sumTop))) * room : b.alt * 3.3 * s));
     const put = (name, x, y) => { el.style.setProperty('--' + name + 'l', ((x - left) * s).toFixed(1) + 'px'); el.style.setProperty('--' + name + 'b', y.toFixed(1) + 'px'); };
     put('o', xOf(pos.sun), yOf(pos.sun));
@@ -281,7 +283,7 @@
     // птахи: місце зграї — частка видимої ширини й висоти неба (від шапки до далеких пагорбів), самі птахи — в одиницях малюнка
     const bg = el.querySelector('.ld-birds');
     if (bg) {
-      const top = Math.max(ART_Y + 6, ART_Y + ART_H - Math.min((svg && svg.clientHeight) || H, H - hdr - 10) / s), bot = 296;
+      const top = Math.max(ART_Y + 6, ART_Y + ART_H + (off - Math.min((svg && svg.clientHeight) || H, H - hdr - 10)) / s), bot = 296;
       bg.innerHTML = flocks.map((f) => {
         // зграї тримаються відкритого неба: на широкому екрані — між заголовком і балачками (там, де ходять світила),
         // низькі — ще вужче, над річкою між берегами (з боків там уже ліс); на телефоні — на всю ширину
@@ -660,6 +662,23 @@
       if (q.get('seed')) seed = +q.get('seed') | 0;
 
       if (q.get('sky') || q.get('wx') || q.get('day') || q.get('cover')) fake = { at: parseTime(q.get('sky'), q.get('day')), cover: q.get('cover') != null ? +q.get('cover') : null, wx: WORD[q.get('wx')] ? q.get('wx') : null };
+      // ТИМЧАСОВО: проби вигляду розділів (?sec=a|b|c) — після вибору прибрати разом зі static/rozdily-proby.css.
+      // Рядки під назвами — приклад: справжні («що грає», «скільки ігор») підключу після вибору.
+      const sec = q.get('sec');
+      if (/^[abc]$/.test(sec || '')) {
+        document.documentElement.dataset.sec = sec;
+        const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = '/static/rozdily-proby.css'; document.head.appendChild(css);
+        const TOP = { viewEfir: ['Ефір', 'Зараз тиша, черга порожня.'], viewLib: ['Бібліотека', 'Усе, що вже грало, улюблене й плейлисти.'],
+          viewGames: ['Ігри', '95 ігор. Щоденних сьогодні 0 з 11.'], viewStats: ['Хто скільки', 'Тиждень із 11 листопада.'] };
+        for (const id of Object.keys(TOP)) {
+          const v = document.getElementById(id);
+          if (!v) continue;
+          const d = document.createElement('div');
+          d.className = 'hm-skybox sec-top';
+          d.innerHTML = '<div class="hm-top"><h1>' + TOP[id][0] + '</h1><p class="hm-lead">' + TOP[id][1] + '<span class="hm-wx" data-sky-text hidden></span></p></div>';
+          v.prepend(d);
+        }
+      }
       mount();
       paint();
       setInterval(() => { if (!document.hidden) { paint(); load(false); } }, 5 * 60000);
