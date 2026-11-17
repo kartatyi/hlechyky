@@ -154,6 +154,17 @@ my $svg = <<"SVG";
     <clipPath id="ob-cml"><path d="$midL"/></clipPath><clipPath id="ob-cmr"><path d="$midR"/></clipPath>
     <linearGradient id="ob-gdl"><stop offset="0" class="ob-sd1"/><stop offset=".8" class="ob-sd0"/></linearGradient>
     <linearGradient id="ob-gdr"><stop offset=".2" class="ob-sd0"/><stop offset="1" class="ob-sd1"/></linearGradient>
+    <!-- жодного плаского елемента: у кожного свій градієнт (світліший верх чи середина), кольори — зі змінних у polyva.css -->
+    <linearGradient id="ob-gp" x1="0" y1="0" x2="0" y2="1"><stop offset="0" class="ob-sp0"/><stop offset="1" class="ob-sp1"/></linearGradient>
+    <radialGradient id="ob-gc" cx=".5" cy=".28" r=".8"><stop offset="0" class="ob-sc0"/><stop offset="1" class="ob-sc1"/></radialGradient>
+    <linearGradient id="ob-gbr" gradientUnits="userSpaceOnUse" x1="0" y1="224" x2="0" y2="350"><stop offset="0" class="ob-sb0"/><stop offset="1" class="ob-sb1"/></linearGradient>
+    <linearGradient id="ob-grk" x1="0" y1="0" x2="0" y2="1"><stop offset="0" class="ob-sk0"/><stop offset=".7" class="ob-sk1"/></linearGradient>
+    <linearGradient id="ob-grk2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" class="ob-sk20"/><stop offset=".7" class="ob-sk21"/></linearGradient>
+    <linearGradient id="ob-gst" x1="0" y1="0" x2="0" y2="1"><stop offset="0" class="ob-st0"/><stop offset="1" class="ob-st1"/></linearGradient>
+    <radialGradient id="ob-gpad" cx=".4" cy=".35" r=".75"><stop offset="0" class="ob-spd0"/><stop offset="1" class="ob-spd1"/></radialGradient>
+    <radialGradient id="ob-gfl" cx=".4" cy=".35" r=".7"><stop offset="0" class="ob-sf0"/><stop offset="1" class="ob-sf1"/></radialGradient>
+    <linearGradient id="ob-grd" gradientUnits="userSpaceOnUse" x1="0" y1="310" x2="0" y2="470"><stop offset="0" class="ob-srd0"/><stop offset="1" class="ob-srd1"/></linearGradient>
+    <linearGradient id="ob-gts" x1="0" y1="0" x2="0" y2="1"><stop offset="0" class="ob-sts0"/><stop offset="1" class="ob-sts1"/></linearGradient>
     <radialGradient id="ob-gr" cx=".5" cy="0" r="1"><stop offset="0" class="ob-sr0"/><stop offset="1" class="ob-sr1"/></radialGradient>
   </defs>
   <g class="ld-stars">$stars</g>
