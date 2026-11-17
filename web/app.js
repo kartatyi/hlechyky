@@ -545,7 +545,9 @@
       else if (playState === 'connecting') set('primary busy', '<span class="spin"></span>', 'Врубаю…');
       else set('live', '<span class="dot"></span><span class="stop"></span>', 'В ефірі — вирубити звук');
     };
+    document.body.classList.toggle('playing', playState === 'live');   // знак у шапці оживає (static/polyva.css, .mk-rays)
     paint($('playBtn'), '');
+
     document.querySelectorAll('.bigplay').forEach((big) => paint(big, 'bigplay '));
   }
   // сервер записує, хто слухав кожен трек (вкладка «Рейтинг»); ETS2 і VLC він бачить лише числом у потоці

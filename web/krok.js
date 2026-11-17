@@ -30,6 +30,7 @@
     'recpulse', // запис голосу
     'sky-rain', 'sky-snow', // дощ і сніг у сцені «Обрій» на головній (static/polyva.css)
     'play-rings', // кола від ▶, поки ефір грає
+    'mk-rays', // кільце променів знака в шапці — теж поки ефір грає
   ]);
   const STEP_MS = 100;
   const list = new Set();

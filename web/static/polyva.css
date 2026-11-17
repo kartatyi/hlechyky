@@ -270,3 +270,9 @@ header::after { content: ''; position: absolute; left: 0; right: 0; top: 100%; h
 
 /* ---- емодзі картинками (web/emo.js): той самий розмір і місце, що в рідного емодзі ---- */
 img.emo { display: inline-block; width: 1.18em; height: 1.18em; vertical-align: -.22em; flex: none; user-select: none; }
+
+/* ---- знак у шапці: квітка в кільці променів; поки ефір грає, кільце ледь пульсує — стан видно й без плеєра ---- */
+header .brand .brand-mk { display: block; flex: none; width: 30px; height: 30px; }
+body.playing header .brand .mk-rays { animation: mk-rays 2.4s ease-in-out infinite; }
+@keyframes mk-rays { 50% { opacity: .38; } }
+@media (prefers-reduced-motion: reduce) { body.playing header .brand .mk-rays { animation: none; } }
