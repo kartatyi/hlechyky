@@ -137,7 +137,10 @@
     const left = el.dataset.anchor === 'left' ? 0 : (ART_W - vis) / 2;
     const ha = pos.day ? pos.ha : Math.atan2(Math.sin(pos.ha - Math.PI), Math.cos(pos.ha - Math.PI));
     const alt = pos.day ? pos.alt : -pos.alt;
-    const xu = left + vis * (0.5 + 0.4 * Math.sin(ha));
+    // Ліворуч у небі стоїть заголовок, праворуч на широкому екрані — балачки: світило ходить у проміжку між ними
+    // (на телефоні — правою половиною), щоб не сідати ні на текст, ні за панель.
+    const narrow = el.dataset.anchor === 'left';
+    const xu = left + vis * (narrow ? 0.88 + 0.05 * Math.sin(ha) : 0.52 + 0.16 * Math.sin(ha));
     el.style.setProperty('--ol', ((xu - left) * s).toFixed(1) + 'px');
     // Висота — частка від сьогоднішнього полудня: опівдні світило стоїть угорі сцени й улітку, і взимку (коли справжнє
     // сонце ледь піднімається над обрієм і весь день лежало б на пагорбах). Нижче обрію — ховається за землю.

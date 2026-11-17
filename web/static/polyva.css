@@ -312,7 +312,10 @@ body.route-home.preview { --sky-h: 560px; }
 @media (max-width: 900px) {
   /* ▶ стоїть у картці ефіру — нижній міні-плеєр тут, як і на «Ефірі», зайвий */
   body.route-home { --mini-h: 0px; --sky-h: 250px; --sky-fg: 96px; }
-  body.route-home.preview { --sky-h: 470px; }
+  body.route-home.preview { --sky-h: 530px; }
+  .sky-orb { width: 40px; height: 40px; margin: 0 0 -20px -20px; }
+  .sky-halo { width: 420px; height: 420px; margin: 0 0 -210px -210px; }
+
   body.route-home header .mini { display: none; }
   .hm, .hm-g2, .hm-g3 { gap: 12px; }
   .hm-g2 { grid-template-columns: 1fr; }
