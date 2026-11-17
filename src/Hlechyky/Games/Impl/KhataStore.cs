@@ -45,8 +45,10 @@ public static class KhataSources
     public const string Own = "own";
     /// <summary>Відкритий набір Inside Airbnb (CC BY 4.0): ціна за ніч, одне фото-обкладинка.</summary>
     public const string Airbnb = "airbnb";
+    /// <summary>Офіційний API DIM.RIA: довгострокова оренда в Україні, ціна за місяць, усі фото оголошення.</summary>
+    public const string Ria = "ria";
 
-    public static string Label(string source) => source == Airbnb ? "Airbnb" : "";
+    public static string Label(string source) => source switch { Airbnb => "Airbnb", Ria => "DIM.RIA", _ => "" };
 
     /// <summary>Адреса фото для показу: сервер фото Airbnb сам віддає зменшений варіант (оригінали важать по 2–14 МБ).</summary>
     public static string Show(string source, string photo) => source == Airbnb ? photo + "?im_w=960" : photo;
@@ -321,6 +323,12 @@ public sealed partial class KhataStore
             Publish();
             return (fresh.Count, changed.Count, skipped);
         }
+    }
+
+    /// <summary>Чи банк уже знає це оголошення джерела (є в грі або зняте) — щоб не питати про нього джерело вдруге.</summary>
+    public bool Knows(string source, string extId)
+    {
+        lock (_gate) return _gone.Contains(GoneKey(source, extId)) || _all.Any(f => f.Source == source && f.ExtId == extId);
     }
 
     /// <summary>Наступне зовнішнє оголошення на перевірку «чи фото ще живе» — по колу.</summary>

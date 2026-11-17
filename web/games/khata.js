@@ -513,9 +513,15 @@
         ? (st.form ? '' : '<button type="button" class="primary" data-kh="open">🏠 Додати квартиру</button>')
         : '<span class="muted small">Додавати квартири можна з акаунта</span>') + '</div>';
       const src = b.bySource || {};
-      if (src.airbnb) html += '<div class="muted small">Зі світу — ' + num(src.airbnb) + ' справжніх оголошень Airbnb (ціна за ніч)'
-        + (src.own ? ', від гравців — ' + num(src.own) : '') + '. Дані світу — <a href="https://insideairbnb.com/"' + OUT + '>Inside Airbnb</a>, CC BY 4.0; '
-        + 'фото показуються просто з Airbnb.</div>';
+      // Звідки квартири — і обов'язкові згадки джерел: Inside Airbnb (CC BY 4.0) і DIM.RIA (умова їхнього API — посилання).
+      const from = [];
+      if (src.ria) from.push('з України — ' + num(src.ria) + ' оголошень DIM.RIA (за місяць, з усіма фото)');
+      if (src.airbnb) from.push('зі світу — ' + num(src.airbnb) + ' оголошень Airbnb (за ніч, одне фото)');
+      if (src.own) from.push('від гравців — ' + num(src.own));
+      if (src.ria || src.airbnb) html += '<div class="muted small">Оголошення справжні: ' + from.join('; ') + '. '
+        + (src.ria ? 'Оренда в Україні — <a href="https://dom.ria.com/uk/"' + OUT + '>DIM.RIA</a>. ' : '')
+        + (src.airbnb ? 'Дані світу — <a href="https://insideairbnb.com/"' + OUT + '>Inside Airbnb</a>, CC BY 4.0. ' : '')
+        + 'Фото показуються просто з сайтів-джерел.</div>';
       else if (!total && !st.form) html += '<div class="muted small">Банк порожній. '
         + (b.admin ? 'Набери світ кнопкою нижче або додай квартиру сам.' : 'Світ набирає розробник; свою квартиру можна додати кнопкою вище.') + '</div>';
       if (b.admin) {
@@ -524,6 +530,11 @@
           ? '<span>🌍 Набираю світ: ' + im.done + ' з ' + im.total + ' міст · нових ' + num(im.added) + ' · ' + ctx.esc(im.message || '') + '</span>'
           : '<button type="button" class="ghost" data-kh="import">🌍 ' + (src.airbnb ? 'Донабрати світ' : 'Набрати світ') + ' з Inside Airbnb</button>'
             + (im.message ? '<span class="muted small">' + ctx.esc(im.message) + '</span>' : '')) + '</div>';
+        // Україна набирається сама, потроху (пакет DIM.RIA дає обмаль запитів на годину) — щойно в налаштуваннях є ключ.
+        const ria = b.ria || {};
+        html += '<div class="khimp muted small"><span>Україна (DIM.RIA): ' + (ria.key
+          ? ctx.esc(ria.message || 'набираю потроху') + (ria.added ? ' · за цей запуск додано ' + num(ria.added) : '')
+          : 'ключа нема. Впиши його в appsettings.Local.json → Khata → RiaKey — і оренда почне набиратись сама, без перезапуску') + '</span></div>';
       }
       if (b.account && !st.form) html += '<div class="muted small">За кожну схвалену квартиру — 🏺 ' + b.reward + '. Свою квартиру в компанії ти не вгадуєш.</div>';
       if (st.form) html += formHtml(ctx, st);

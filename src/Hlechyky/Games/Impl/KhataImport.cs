@@ -35,15 +35,30 @@ public sealed class KhataImport : BackgroundService
     volatile Progress _state = new(false, 0, 0, 0, 0, "", null);
     int _wanted;
 
-    public KhataImport(KhataStore store, HttpClient http, IClock clock, ILogger? log = null)
+    /// <summary>Стан набору України з DIM.RIA — для рядка в розробника.</summary>
+    public sealed record RiaProgress(bool HasKey, int Added, string Message, DateTimeOffset? At);
+
+    readonly Func<KhataOptions> _options;
+    readonly Queue<(KhataRia.City City, long Id)> _riaQueue = new();
+    /// <summary>Оголошення, які вже питали й вони не згодились (чуже місто, без фото): вдруге запит на них не витрачаємо.</summary>
+    readonly HashSet<long> _riaSkip = [];
+    int _riaCity = -1;
+    int _riaAdded;
+    Dictionary<string, double>? _uah;
+    DateTimeOffset _uahAt;
+    volatile RiaProgress _ria = new(false, 0, "", null);
+
+    public KhataImport(KhataStore store, HttpClient http, IClock clock, ILogger? log = null, Func<KhataOptions>? options = null)
     {
         _store = store;
         _http = http;
         _clock = clock;
         _log = log;
+        _options = options ?? (() => new KhataOptions());
     }
 
     public Progress State => _state;
+    public RiaProgress Ria => _ria;
 
     /// <summary>Розробник просить набрати (чи донабрати) світ. false — імпорт уже йде.</summary>
     public bool Start()
@@ -63,7 +78,129 @@ public sealed class KhataImport : BackgroundService
         return true;
     }
 
-    protected override async Task ExecuteAsync(CancellationToken ct)
+    protected override Task ExecuteAsync(CancellationToken ct) => Task.WhenAll(MainLoop(ct), RiaLoop(ct));
+
+    // ---------------------------------------------------------------------------------------
+    // Україна: DIM.RIA — потроху, у межах пакета запитів
+    // ---------------------------------------------------------------------------------------
+
+    async Task RiaLoop(CancellationToken ct)
+    {
+        var pause = TimeSpan.FromSeconds(30);
+        while (!ct.IsCancellationRequested)
+        {
+            try { await Task.Delay(pause, ct); }
+            catch (OperationCanceledException) { break; }
+            var o = _options();
+            if (string.IsNullOrWhiteSpace(o.RiaKey))
+            {
+                _ria = new(false, _riaAdded, "Ключа DIM.RIA нема — українська оренда не набирається", null);
+                pause = TimeSpan.FromMinutes(2);
+                continue;
+            }
+            try { pause = await RiaStep(o, ct); }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { break; }
+            catch (Exception ex)
+            {
+                _log?.LogWarning(ex, "khata: крок DIM.RIA спіткнувся");
+                RiaReport("Збій зв'язку з DIM.RIA — спробую пізніше");
+                pause = TimeSpan.FromMinutes(10);
+            }
+        }
+    }
+
+    void RiaReport(string message) => _ria = new(true, _riaAdded, message, _clock.UtcNow);
+
+    /// <summary>Курс НБУ (гривень за долар і євро) — на випадок оголошення з ціною у валюті. Перечитуємо раз на пів доби.</summary>
+    async Task<Dictionary<string, double>> Rates(CancellationToken ct)
+    {
+        if (_uah is not null && _clock.UtcNow - _uahAt < TimeSpan.FromHours(12)) return _uah;
+        try
+        {
+            _uah = KhataAirbnb.UahPer(await _http.GetStringAsync(KhataAirbnb.RatesUrl, ct));
+            _uahAt = _clock.UtcNow;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+        {
+            _uah ??= [];
+        }
+        return _uah;
+    }
+
+    /// <summary>
+    /// Один запит до DIM.RIA: коли черга порожня — пошук по наступному місту (сотня номерів, беремо незнайомі), інакше —
+    /// одне оголошення з черги. Повертає, скільки чекати до наступного запиту: пакет дає обмаль запитів на годину, тож
+    /// база росте повільно, але сама. Ліміт вичерпано чи ключ не приймають — довга пауза, а не стукіт у зачинені двері.
+    /// </summary>
+    public async Task<TimeSpan> RiaStep(KhataOptions o, CancellationToken ct)
+    {
+        var gap = TimeSpan.FromSeconds(3600.0 / Math.Clamp(o.RiaPerHour, 1, 3000));
+        var key = o.RiaKey.Trim();
+        if (_riaQueue.Count == 0)
+        {
+            var at = (_riaCity + 1) % KhataRia.Cities.Count;
+            var city = KhataRia.Cities[at];
+            using var resp = await _http.GetAsync(KhataRia.SearchUrl(city, key), ct);
+            if (RiaRefused(resp) is { } wait) return wait;
+            _riaCity = at;
+            if (!resp.IsSuccessStatusCode)
+            {
+                RiaReport($"{city.Name}: пошук відповів {(int)resp.StatusCode}");
+                return gap;
+            }
+            var ids = KhataRia.Ids(await resp.Content.ReadAsStringAsync(ct));
+            var have = _store.Live.Count(f => f.Source == KhataSources.Ria && f.City == city.Name);
+            var want = have >= KhataRia.PerCity ? KhataRia.Refresh : KhataRia.PerCity - have;
+            var fresh = ids.Where(id => !_riaSkip.Contains(id) && !_store.Knows(KhataSources.Ria, id.ToString(System.Globalization.CultureInfo.InvariantCulture))).ToList();
+            for (var i = fresh.Count - 1; i > 0; i--)
+            {
+                var j = Random.Shared.Next(i + 1);
+                (fresh[i], fresh[j]) = (fresh[j], fresh[i]);
+            }
+            foreach (var id in fresh.Take(want)) _riaQueue.Enqueue((city, id));
+            RiaReport($"{city.Name}: оголошень знайдено {ids.Count}, нових беру {Math.Min(want, fresh.Count)}");
+            return gap;
+        }
+
+        var (c, flatId) = _riaQueue.Peek();
+        using var info = await _http.GetAsync(KhataRia.InfoUrl(flatId, key), ct);
+        if (RiaRefused(info) is { } hold) return hold;
+        _riaQueue.Dequeue();
+        var flat = info.IsSuccessStatusCode ? KhataRia.Flat(await info.Content.ReadAsStringAsync(ct), c, await Rates(ct)) : null;
+        if (flat is null) _riaSkip.Add(flatId);
+        else
+        {
+            var (added, _, _) = _store.Import(KhataSources.Ria, [flat]);
+            _riaAdded += added;
+        }
+        RiaReport($"{c.Name}: {(flat is null ? "оголошення не згодилось" : "додано квартиру")}; у черзі ще {_riaQueue.Count}");
+        return gap;
+    }
+
+    /// <summary>DIM.RIA відмовила (ліміт запитів, пакет скінчився, ключ не той) — скільки чекати; null — не відмова.</summary>
+    TimeSpan? RiaRefused(HttpResponseMessage resp)
+    {
+        switch (resp.StatusCode)
+        {
+            case HttpStatusCode.TooManyRequests:
+                RiaReport("Ліміт запитів DIM.RIA на цю годину вичерпано — продовжу за годину");
+                return TimeSpan.FromHours(1);
+            case HttpStatusCode.Unauthorized:
+                RiaReport("DIM.RIA не приймає ключ — перевір Khata:RiaKey");
+                return TimeSpan.FromHours(1);
+            case HttpStatusCode.PaymentRequired or HttpStatusCode.Forbidden:
+                RiaReport("Пакет запитів DIM.RIA скінчився або ключ вимкнено — спробую за шість годин");
+                return TimeSpan.FromHours(6);
+            default:
+                return null;
+        }
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // світ: Inside Airbnb на прохання розробника; перевірка «чи фото ще живе»
+    // ---------------------------------------------------------------------------------------
+
+    async Task MainLoop(CancellationToken ct)
     {
         // Перше коло перевірки — не на старті сервера: там і без нас є що робити.
         var pause = TimeSpan.FromMinutes(2);

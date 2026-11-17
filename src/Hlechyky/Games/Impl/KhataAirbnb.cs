@@ -143,14 +143,21 @@ public static partial class KhataAirbnb
         return best.ToDictionary(kv => kv.Key, kv => kv.Value.Url, StringComparer.Ordinal);
     }
 
-    /// <summary>Курс НБУ → скільки доларів в одиниці кожної валюти (USD = 1).</summary>
-    public static Dictionary<string, double> UsdPer(string ratesJson)
+    /// <summary>Курс НБУ як є: скільки гривень в одиниці кожної валюти.</summary>
+    public static Dictionary<string, double> UahPer(string ratesJson)
     {
         var uah = new Dictionary<string, double>(StringComparer.Ordinal);
         using var doc = JsonDocument.Parse(ratesJson);
         foreach (var e in doc.RootElement.EnumerateArray())
             if (e.TryGetProperty("cc", out var cc) && cc.GetString() is { Length: 3 } code && e.TryGetProperty("rate", out var rate)
                 && rate.TryGetDouble(out var r) && r > 0) uah[code] = r;
+        return uah;
+    }
+
+    /// <summary>Курс НБУ → скільки доларів в одиниці кожної валюти (USD = 1).</summary>
+    public static Dictionary<string, double> UsdPer(string ratesJson)
+    {
+        var uah = UahPer(ratesJson);
         if (!uah.TryGetValue("USD", out var usd)) return [];
         return uah.ToDictionary(kv => kv.Key, kv => kv.Value / usd, StringComparer.Ordinal);
     }

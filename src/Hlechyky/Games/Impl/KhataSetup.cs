@@ -15,6 +15,7 @@ public static class KhataSetup
 
     public static IServiceCollection AddKhata(IServiceCollection services)
     {
+        services.AddOptions<KhataOptions>().BindConfiguration("Khata");   // Khata:RiaKey — ключ DIM.RIA (лише в appsettings.Local.json)
         services.AddSingleton(sp =>
         {
             var economy = sp.GetService<Hlechyky.Games.Economy.Economy>();
@@ -32,8 +33,10 @@ public static class KhataSetup
             var http = new HttpClient { Timeout = TimeSpan.FromMinutes(15) };
             http.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (compatible)");
             http.DefaultRequestHeaders.Accept.ParseAdd("*/*");
+            // Ключ DIM.RIA читаємо щоразу наново: вписав у appsettings.Local.json — і набір України пішов без перезапуску.
+            var options = sp.GetService<Microsoft.Extensions.Options.IOptionsMonitor<KhataOptions>>();
             return new KhataImport(sp.GetRequiredService<KhataStore>(), http, sp.GetService<IClock>() ?? new SystemClock(),
-                sp.GetService<ILogger<KhataImport>>());
+                sp.GetService<ILogger<KhataImport>>(), () => options?.CurrentValue ?? new KhataOptions());
         });
         services.AddHostedService(sp => sp.GetRequiredService<KhataImport>());
         return services;
@@ -89,7 +92,9 @@ public static class KhataSetup
         var account = Auth.IsUser(c);
         var admin = Auth.IsAdmin(c);
         var economy = sp.GetService<Hlechyky.Games.Economy.Economy>();
-        var state = sp.GetService<KhataImport>()?.State;
+        var import = sp.GetService<KhataImport>();
+        var state = import?.State;
+        var ria = import?.Ria;
         c.Response.Headers.CacheControl = "no-store";
         return Results.Json(new
         {
@@ -105,7 +110,10 @@ public static class KhataSetup
             {
                 own = store.BySource.GetValueOrDefault(KhataSources.Own),
                 airbnb = store.BySource.GetValueOrDefault(KhataSources.Airbnb),
+                ria = store.BySource.GetValueOrDefault(KhataSources.Ria),
             },
+            // набір України з DIM.RIA — лише розробнику: чи є ключ і що зараз відбувається
+            ria = !admin || ria is null ? null : new { key = ria.HasKey, added = ria.Added, message = ria.Message, at = ria.At },
             // поступ імпорту світу — лише розробнику (він його й запускає)
             import = !admin || state is null ? null : new
             {
