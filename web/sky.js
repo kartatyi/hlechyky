@@ -4,8 +4,8 @@
 //
 // Малює все CSS (static/polyva.css) і пейзаж static/obrii.svg — Тетерів у Житомирі: небо в три кольори, далекі
 // пагорби, підвісний міст, береги каньйону, вода з відблиском; усе далеке тоне в тумані, чіткий лише очерет спереду.
-// Унизу сторінки той самий берег закриває її (static/obrii-niz.svg). Звідси йдуть лише змінні на <html> — кольори
-// (--sk0…--sk2, --l1…--l4 і їхні «…m» у тумані, --lb міст, --rock, --w0, --w1, --pad, --mist, --end), скільки туману
+// Колір обрію (--tint) і бік, звідки світить сонце (--sun-x, --sh-x), беруть фон і блоки всього сайту. Звідси йдуть лише змінні на <html> — кольори
+// (--sk0…--sk2, --l1…--l4 і їхні «…m» у тумані, --lb міст, --rock, --w0, --w1, --pad, --mist), скільки туману
 // (--sky-mist), ліхтарі на мосту (--sky-lamp), світило (--sky-orb, --sky-halo, --sky-oo), зорі й хмари
 // (--sky-stars, --sky-cirrus, --sky-deck) — і два атрибути:
 // data-sky (night | dawn | day | dusk) та data-wx (clear | cloud | fog | rain | snow | storm). Перераховуємо раз на
@@ -103,13 +103,13 @@
     const cloud = fake && fake.wx ? (fake.wx === 'clear' ? 0 : 90) : wx && wx.cover != null ? wx.cover : k === 'clear' ? 0 : 70;
     const cover = clamp(cloud / 100, 0, 1) * (wet ? 0.86 : 0.62);
     const grey = [mix(hex('#141a22'), hex('#59646e'), t), mix(hex('#1c232b'), hex('#7f8b92'), t), mix(hex('#262e36'), hex('#a9b3b6'), t)];
-    // Небо не має перекрикувати сторінку: підмішуємо наш темний зелений — удень найбільше, бо день найяскравіший.
-    const dim = 0.3 + 0.2 * t;
+    // Кольори неба лишаємо повними (схід і захід мають бути гарні); крапля нашого зеленого лише в'яже їх зі сторінкою.
+    const dim = 0.05;
     const sk = c.sk.map((x, i) => mix(mix(x, grey[i], cover), BG, dim));
     const g = mix(c.g, mix(c.g, hex('#222b2a'), 0.5), cover);
     const l4 = mix(g, BG, 0.74);
     // Туман — колір обрію, розбілений; у «туман» за погодою його вдвічі більше.
-    const mist = mix(sk[2], hex('#ffffff'), 0.12 + 0.1 * t);
+    const mist = mix(sk[2], hex('#ffffff'), 0.2 + 0.16 * t);
 
     const l1 = mix(sk[2], g, 0.3), l2 = mix(sk[2], g, 0.7), l2b = mix(sk[2], g, 0.9), l3 = mix(mix(g, BG, 0.34), sk[2], 0.1);
 
@@ -133,12 +133,14 @@
         // спільний колір сторінки: колір обрію цієї миті — ним підсвічено рамки й блоки по всьому сайту
         // звідки падає світло на блоки: сонце (вночі місяць) іде зліва направо — відблиск на блоках іде за ним
         '--sun-x': Math.round(50 + 42 * Math.sin(s.alt > -4 ? s.ha : s.ha - Math.PI)) + '%',
+        '--sh-x': Math.round(-12 * Math.sin(s.alt > -4 ? s.ha : s.ha - Math.PI)) + 'px',
+        // ближні сосни: не чорні силуети, а в тому ж серпанку, що й усе
+        '--l3t': css(mix(l3, sk[2], 0.24)), '--l3tm': css(mix(mix(l3, sk[2], 0.24), mist, 0.4)),
         '--tint': css(mix(mix(c.sk[2], grey[2], cover), g, 0.12)),
-        '--end': css(mix(BG, mix(g, sk[2], 0.35), 0.3 + 0.1 * t)),
         '--w0': css(mix(sk[2], sk[1], 0.3)), '--w1': css(mix(sk[1], g, 0.62)),
         '--pad': css(mix(g, hex('#3f9e68'), 0.25 + 0.25 * t)),
-        '--sky-orb': css(mix(pos.day ? c.orb : P.night.orb, sk[2], 0.22)),
-        '--sky-halo': (c.halo * 0.7 * (1 - cover)).toFixed(3),
+        '--sky-orb': css(mix(pos.day ? c.orb : P.night.orb, sk[2], 0.1)),
+        '--sky-halo': (c.halo * 0.9 * (1 - cover)).toFixed(3),
         '--sky-oo': clamp(1 - cover * 1.05, 0, 1).toFixed(2),
         '--sky-stars': (c.stars * (1 - clamp(cloud / 100, 0, 1) * 0.9)).toFixed(2),
         '--sky-cl': css(mix(sk[2], hex('#ffffff'), 0.12 + 0.38 * t)),
@@ -223,12 +225,9 @@
     if (!el || el.dataset.ready) return;
     el.dataset.ready = '1';
     const narrow = window.matchMedia('(max-width: 900px)');
-    const end = document.getElementById('skyEnd');
     const anchor = () => {
       // На телефоні видно лише середину пейзажу — міст; очерет з країв CSS підсуває до неї (.ld-reed-a / -b).
       el.dataset.anchor = narrow.matches ? 'narrow' : 'mid';
-      const svg = end && end.querySelector('svg');
-      if (svg) svg.setAttribute('preserveAspectRatio', narrow.matches ? 'xMinYMax slice' : 'xMidYMax slice');
       place();
     };
     const art = (url, into) => fetch(url).then((r) => (r.ok ? r.text() : '')).then((t) => {
@@ -237,7 +236,6 @@
       anchor();
     }).catch(() => { /* без малюнка лишається небо-градієнт */ });
     art('/static/obrii.svg', el.querySelector('.sky-art'));
-    if (end) art('/static/obrii-niz.svg', end);
     narrow.addEventListener?.('change', anchor);
     if (window.ResizeObserver) new ResizeObserver(place).observe(el);
     anchor();
@@ -251,8 +249,6 @@
     init(opts) {
       o = opts || {};
       const q = new URLSearchParams(location.search);
-      if (q.get('tint')) document.documentElement.dataset.tint = q.get('tint');   // перегляд варіантів: ?tint=c|d|e
-      if (q.get('bg')) document.documentElement.dataset.bg = q.get('bg');         // і фону: ?bg=1|2|3
       if (q.get('sky') || q.get('wx')) fake = { at: parseTime(q.get('sky')), wx: WORD[q.get('wx')] ? q.get('wx') : null };
       mount();
       paint();

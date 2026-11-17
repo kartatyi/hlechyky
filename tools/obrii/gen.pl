@@ -64,6 +64,7 @@ for my $x (740, 1260) {
   $br .= sprintf('<path class="ld-br-w" d="M%.1f 228 L%.1f 249 M%.1f 228 L%.1f 249"/>', $x - 3.2, $x + 3.2, $x + 3.2, $x - 3.2);
 }
 $br .= '<rect x="520" y="279" width="960" height="3.4"/>';
+my $brS = $br;   # для відбиття у воді — лише пілони й настил, без тросів
 my $h = '';
 for (my $x = 760; $x <= 1240; $x += 20) { my $t = ($x - 740) / 520; $h .= sprintf('M%d %.1f V279', $x, 227 + 180 * $t * (1 - $t)); }
 for (my $x = 560; $x <= 720; $x += 20) { $h .= sprintf('M%d %.1f V279', $x, 281 - ($x - 540) / 200 * 54); }
@@ -124,10 +125,12 @@ my $svg = <<"SVG";
     <filter id="ob-f2" filterUnits="userSpaceOnUse" x="-60" y="60" width="2120" height="520"><feGaussianBlur stdDeviation="2.2"/></filter>
     <filter id="ob-f3" filterUnits="userSpaceOnUse" x="-60" y="60" width="2120" height="520"><feGaussianBlur stdDeviation="1.1"/></filter>
     <filter id="ob-fb" filterUnits="userSpaceOnUse" x="-60" y="60" width="2120" height="520"><feGaussianBlur stdDeviation=".55"/></filter>
+    <filter id="ob-f4" filterUnits="userSpaceOnUse" x="-60" y="60" width="2120" height="520"><feGaussianBlur stdDeviation="1.7"/></filter>
     <filter id="ob-fr" filterUnits="userSpaceOnUse" x="-60" y="60" width="2120" height="520"><feGaussianBlur stdDeviation="5 2.4"/></filter>
     <linearGradient id="ob-g1" gradientUnits="userSpaceOnUse" x1="0" y1="300" x2="0" y2="352"><stop offset="0" class="ob-s1"/><stop offset="1" class="ob-s1m"/></linearGradient>
     <linearGradient id="ob-g2" gradientUnits="userSpaceOnUse" x1="0" y1="244" x2="0" y2="360"><stop offset="0" class="ob-s2"/><stop offset="1" class="ob-s2m"/></linearGradient>
     <linearGradient id="ob-g2b" gradientUnits="userSpaceOnUse" x1="0" y1="286" x2="0" y2="382"><stop offset="0" class="ob-s2b"/><stop offset="1" class="ob-s2bm"/></linearGradient>
+    <linearGradient id="ob-g3t" gradientUnits="userSpaceOnUse" x1="0" y1="290" x2="0" y2="412"><stop offset="0" class="ob-s3t"/><stop offset="1" class="ob-s3tm"/></linearGradient>
     <linearGradient id="ob-g3" gradientUnits="userSpaceOnUse" x1="0" y1="392" x2="0" y2="456"><stop offset="0" class="ob-s3m"/><stop offset="1" class="ob-s3"/></linearGradient>
     <linearGradient id="ob-g4" x1="0" y1="0" x2="0" y2="1"><stop offset="0" class="ob-s4"/><stop offset=".55" class="ob-sbg"/></linearGradient>
     <linearGradient id="ob-gw" gradientUnits="userSpaceOnUse" x1="0" y1="356" x2="0" y2="470"><stop offset="0" class="ob-sw0"/><stop offset="1" class="ob-sw1"/></linearGradient>
@@ -146,16 +149,18 @@ my $svg = <<"SVG";
   <g filter="url(#ob-f3)"><path class="ld-rock" d="$rock"/><path class="ld-rock-l" d="$rockL"/></g>
   <rect class="ld-water" x="-40" y="356" width="2080" height="120"/>
   <g class="ld-l2r" clip-path="url(#ob-cw)"><g filter="url(#ob-fr)" transform="matrix(1 0 0 -.42 0 505.5)"><path d="$bankL"/><path d="$bankR"/><path d="$rock"/></g></g>
+  <g class="ld-brr" clip-path="url(#ob-cw)"><g filter="url(#ob-fr)" transform="matrix(1 0 0 -.45 0 516.2)">$brS</g></g>
   <g clip-path="url(#ob-cw)"><ellipse class="ld-refl" cx="0" cy="356" rx="62" ry="50"/></g>
   <g class="ld-mist" style="--k:.9" filter="url(#ob-b1)"><ellipse cx="1000" cy="354" rx="560" ry="13"/><ellipse cx="330" cy="346" rx="330" ry="11"/><ellipse cx="1680" cy="348" rx="340" ry="11"/></g>
   <path class="ld-glint" d="$glint"/>
   <g class="ld-st" filter="url(#ob-f3)">$st</g>
-  <g class="ld-l2b" filter="url(#ob-f3)"><path d="$midL"/><path d="$midR"/>$midT$rock2T</g>
-  <g filter="url(#ob-fb)"><path class="ld-rock2" d="$rock2"/><path class="ld-rock2-l" d="$rock2L"/></g>
+  <g class="ld-l2b" filter="url(#ob-f2)"><path d="$midL"/><path d="$midR"/>$midT$rock2T</g>
+  <g class="ld-l2br" clip-path="url(#ob-cw)"><g filter="url(#ob-fr)" transform="matrix(1 0 0 -.5 0 570)"><path d="$midL"/><path d="$midR"/>$midT</g></g>
+  <g filter="url(#ob-f3)"><path class="ld-rock2" d="$rock2"/><path class="ld-rock2-l" d="$rock2L"/></g>
   <g class="ld-mist" style="--k:.5" filter="url(#ob-b1)"><ellipse cx="250" cy="378" rx="330" ry="9"/><ellipse cx="1760" cy="378" rx="320" ry="9"/></g>
   <g>$l</g>
   <g class="ld-l3" filter="url(#ob-f3)"><path d="$nearL"/><path d="$nearR"/></g>
-  <g class="ld-tr3" filter="url(#ob-fb)">$nearT</g>
+  <g class="ld-tr3" filter="url(#ob-f4)">$nearT</g>
   <rect class="ld-mist" style="--k:.45" x="-40" y="396" width="2080" height="70"/>
   <path class="ld-l4" d="$fore"/>
   <g class="ld-reed ld-reed-a">$reedA</g>
@@ -164,26 +169,3 @@ my $svg = <<"SVG";
 SVG
 open O, ">:utf8", "$OUT/obrii.svg" or die; print O $svg; close O; print length($svg), " bytes obrii\n";
 
-# ---- низ сторінки: той самий берег — туман і очерет, що росте з нижнього краю
-sub reeds2 { my @q = @_; my $r = '';
-  for my $q (@q) { my ($x, $hh, $lean, $kind) = @$q; my $y0 = 246; my ($tx, $ty) = ($x + $lean, 236 - $hh);
-    if ($kind) { $r .= sprintf('<path d="M%.1f %.1f Q%.1f %.1f %.1f %.1f Q%.1f %.1f %.1f %.1f Z"/>', $x - 2, $y0, $x + $lean * .15 - 1.5, $y0 - $hh * .6, $tx, $ty, $x + $lean * .15 + 2.6, $y0 - $hh * .6, $x + 2, $y0); }
-    else { $r .= sprintf('<path d="M%.0f %.1f Q%.1f %.1f %.1f %.1f" fill="none" stroke-width="2.2"/>', $x, $y0, $x + $lean * .2, $y0 - $hh * .55, $tx, $ty);
-      $r .= sprintf('<rect x="%.1f" y="%.1f" width="5.8" height="21" rx="2.9" transform="rotate(%.1f %.1f %.1f)"/>', $tx - 2.9, $ty + 4, $lean * 1.2, $tx, $ty) if $hh > 92; } }
-  $r }
-my @EA = map { [$_->[0] * 1.15 + 10, $_->[1] * .92 + 8, $_->[2], $_->[3]] } @RA;
-my @EB = map { [2000 - $_->[0], $_->[1] + (($_->[0] * 5) % 19) - 9, -$_->[2], $_->[3]] } @EA;
-my $niz = <<"SVG";
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2000 240" preserveAspectRatio="xMidYMax slice">
-  <!-- Низ головної: той самий берег, що й у «Обрії» вгорі, — пасмо туману й очерет з нижнього краю сторінки. -->
-  <defs>
-    <linearGradient id="ob-ge" x1="0" y1="0" x2="0" y2="1"><stop offset="0" class="ob-sm0"/><stop offset=".72" class="ob-sm1"/><stop offset="1" class="ob-sm0"/></linearGradient>
-    <filter id="ob-e1" x="-20%" y="-200%" width="140%" height="500%"><feGaussianBlur stdDeviation="30 10"/></filter>
-  </defs>
-  <rect class="ld-emist" x="-40" y="60" width="2080" height="180"/>
-  <g class="ld-emist2" filter="url(#ob-e1)"><ellipse cx="520" cy="196" rx="520" ry="18"/><ellipse cx="1500" cy="208" rx="560" ry="16"/></g>
-  <g class="ld-ereed">@{[reeds2(@EA)]}</g>
-  <g class="ld-ereed">@{[reeds2(@EB)]}</g>
-</svg>
-SVG
-open O, ">:utf8", "$OUT/obrii-niz.svg" or die; print O $niz; close O; print length($niz), " bytes niz\n";

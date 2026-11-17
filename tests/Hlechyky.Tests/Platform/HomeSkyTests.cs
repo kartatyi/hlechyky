@@ -12,7 +12,6 @@ public class HomeSkyTests
 
     [Theory]
     [InlineData("static/obrii.svg")]
-    [InlineData("static/obrii-niz.svg")]
     public void Every_class_in_the_drawing_has_a_rule(string file)
     {
         var css = Web("static/polyva.css");
@@ -45,13 +44,11 @@ public class HomeSkyTests
     }
 
     [Fact]
-    public void The_scene_starts_at_the_top_of_the_page_and_the_bank_closes_it()
+    public void The_scene_starts_at_the_top_of_the_page()
     {
         var html = Web("index.html");
         int sky = html.IndexOf("id=\"sky\"", StringComparison.Ordinal), header = html.IndexOf("<header>", StringComparison.Ordinal);
-        int mainEnd = html.IndexOf("</main>", StringComparison.Ordinal), end = html.IndexOf("id=\"skyEnd\"", StringComparison.Ordinal);
         Assert.True(sky >= 0 && sky < header, "сцена стоїть перед шапкою: шапка лежить у небі, а не над ним");
-        Assert.True(end > mainEnd && mainEnd > 0, "низ сторінки (туман і очерет) стоїть після main");
         // міст через Тетерів — те, за чим пейзаж упізнають
         Assert.Contains("class=\"ld-br\"", Web("static/obrii.svg"));
     }
