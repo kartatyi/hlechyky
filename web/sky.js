@@ -2,18 +2,22 @@
 // Де сонце, рахуємо самі (дата й координати, жодних сторонніх даних); хмари, дощ і сніг дає сервер (/api/weather:
 // він сам питає Open-Meteo раз на чверть години, браузери людей туди не ходять). Нема погоди — небо просто ясне.
 //
-// Назовні — лише кілька змінних на <html>: --sky1 і --sky2 (верх і низ неба), --sky-orb (сонце чи місяць), --sky-ox,
-// --sky-oy (де воно), --sky-oo (наскільки видно); і два атрибути: data-sky (night | dawn | day | dusk) та data-wx
-// (clear | cloud | fog | rain | snow | storm). Малює все CSS (static/polyva.css): сцену «Обрій» на головній і тонку
-// смужку неба під шапкою. Перераховуємо раз на п'ять хвилин і коли вкладка вертається — анімацій кольору нема зовсім.
+// Малює все CSS (static/polyva.css) і пейзаж static/obrii.svg: небо в три кольори, чотири шари землі, що тануть у
+// димці, вода з відблиском. Звідси йдуть лише змінні на <html> — кольори (--sk0…--sk2, --l1…--l4, --w0, --w1, --pad),
+// світило (--sky-orb, --sky-halo, --sky-oo), зорі й хмари (--sky-stars, --sky-cirrus, --sky-deck) — і два атрибути:
+// data-sky (night | dawn | day | dusk) та data-wx (clear | cloud | fog | rain | snow | storm). Перераховуємо раз на
+// п'ять хвилин і коли вкладка вертається; кольори не анімуються зовсім.
 (function () {
   'use strict';
   let o = null;
   let wx = null;                 // остання відповідь /api/weather або null
   let wxAt = 0;
   let fake = null;               // перегляд: { at: Date | null, wx: 'rain' | … } — з адреси ?sky=06:10&wx=rain або HSky.preview()
+  let pos = { alt: 0, ha: 0, day: true };
   const KYIV = { lat: 50.45, lon: 30.52 };
   const RAD = Math.PI / 180;
+  // Пейзаж намальовано в цих одиницях (viewBox 0 90 2000 470); вода — на 204 одиниці вище за низ.
+  const ART_W = 2000, ART_H = 470, HORIZON = 204;
 
   // ---------------------------------------------------------------------------------------------
   // де сонце
@@ -33,7 +37,8 @@
     let ha = (gmst * 15 + lon) * RAD - ra;
     ha = Math.atan2(Math.sin(ha), Math.cos(ha));
     const alt = Math.asin(Math.sin(lat * RAD) * Math.sin(dec) + Math.cos(lat * RAD) * Math.cos(dec) * Math.cos(ha));
-    return { alt: alt / RAD, ha };
+    // top — найвища точка, куди сонце сьогодні підніметься (у полудень): від неї рахуємо, наскільки високо воно на сцені
+    return { alt: alt / RAD, ha, top: 90 - Math.abs(lat - dec / RAD) };
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -43,15 +48,21 @@
   const hex = (s) => [1, 3, 5].map((i) => parseInt(s.slice(i, i + 2), 16));
   const mix = (a, b, t) => a.map((x, i) => Math.round(x + (b[i] - x) * t));
   const css = (c) => 'rgb(' + c.join(' ') + ')';
-  const PAL = {
-    night: [hex('#0d1830'), hex('#172a3d')],
-    dawn: [hex('#44527e'), hex('#e9a27c')],
-    day: [hex('#3f9fc4'), hex('#a4d6d4')],
-    dusk: [hex('#5b3a7a'), hex('#f08a4b')],
-  };
-  const GREY_NIGHT = [hex('#20262d'), hex('#2a3138')], GREY_DAY = [hex('#56626c'), hex('#8a959a')];
-  const ORB = { day: hex('#fff6cf'), low: hex('#ffc27d'), moon: hex('#e9e6d2') };
   const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+  const BG = hex('#0f1f18');     // наш зелений: у нього сходить передній план, тож пейзаж виростає зі сторінки
+  /// Чотири пори: небо згори донизу (верх, середина, обрій), зелень землі в цьому світлі, світило, сяйво довкола, зорі.
+  const PAL = {
+    night: { sk: ['#050a17', '#0b1830', '#1c2f4f'], g: '#0d1c16', orb: '#ece8d6', halo: 0.16, stars: 1 },
+    dawn: { sk: ['#24366a', '#7d6a95', '#f5ab7e'], g: '#1d3d2e', orb: '#ffd9a6', halo: 0.5, stars: 0.15 },
+    day: { sk: ['#2a80b5', '#69b5d2', '#cdebe2'], g: '#2e6c49', orb: '#fff7d6', halo: 0.42, stars: 0 },
+    dusk: { sk: ['#231e52', '#95436e', '#f8904b'], g: '#1d3428', orb: '#ffb469', halo: 0.55, stars: 0.1 },
+  };
+  const P = {};
+  for (const k of Object.keys(PAL)) P[k] = { sk: PAL[k].sk.map(hex), g: hex(PAL[k].g), orb: hex(PAL[k].orb), halo: PAL[k].halo, stars: PAL[k].stars };
+  const blend = (a, b, t) => ({
+    sk: a.sk.map((c, i) => mix(c, b.sk[i], t)), g: mix(a.g, b.g, t), orb: mix(a.orb, b.orb, t),
+    halo: a.halo + (b.halo - a.halo) * t, stars: a.stars + (b.stars - a.stars) * t,
+  });
 
   /// Погода з коду WMO (так її віддає Open-Meteo): що малювати й як назвати.
   function kind(code) {
@@ -76,54 +87,82 @@
     const p = (wx && wx.lat != null) ? wx : KYIV;
     const s = sun(at, p.lat, p.lon);
     const morning = s.ha < 0;
-    // −10° і нижче — ніч; до +4° — сутінки (уранці рожево-персикові, увечері жовтогарячі з бузком); вище — день.
-    const t = clamp((s.alt + 10) / 14, 0, 1);
-    const tw = morning ? PAL.dawn : PAL.dusk;
-    let c = t < 0.5 ? [mix(PAL.night[0], tw[0], t * 2), mix(PAL.night[1], tw[1], t * 2)]
-      : [mix(tw[0], PAL.day[0], (t - 0.5) * 2), mix(tw[1], PAL.day[1], (t - 0.5) * 2)];
+    // −10° і нижче — ніч; до +6° — сутінки (уранці персикові, увечері жовтогарячі з бузком); вище — день.
+    const t = clamp((s.alt + 10) / 16, 0, 1);
+    const tw = morning ? P.dawn : P.dusk;
+    const c = t < 0.5 ? blend(P.night, tw, t * 2) : blend(tw, P.day, (t - 0.5) * 2);
     const phase = t <= 0.12 ? 'night' : t >= 0.92 ? 'day' : morning ? 'dawn' : 'dusk';
-    // Погода: хмарність тягне небо до сірого, дощ і сніг — ще трохи.
+    // Погода: хмарність тягне небо й землю до сірого, дощ і сніг — ще трохи.
     const k = fake && fake.wx ? fake.wx : wx ? kind(wx.code) : 'clear';
-    const cover = fake && fake.wx ? (fake.wx === 'clear' ? 0 : 85) : wx && wx.cover != null ? wx.cover : k === 'clear' ? 0 : 70;
-    const grey = [mix(GREY_NIGHT[0], GREY_DAY[0], t), mix(GREY_NIGHT[1], GREY_DAY[1], t)];
-    const g = clamp(cover / 100, 0, 1) * (k === 'rain' || k === 'snow' || k === 'storm' || k === 'fog' ? 0.85 : 0.6);
-    c = [mix(c[0], grey[0], g), mix(c[1], grey[1], g)];
-    // Сонце йде дугою зліва направо; уночі на його місці — місяць навпроти (проста модель, без фаз).
-    const dayOrb = s.alt > -3;
-    const ha = dayOrb ? s.ha : Math.atan2(Math.sin(s.ha - Math.PI), Math.cos(s.ha - Math.PI));
-    const alt = dayOrb ? s.alt : -s.alt;
-    const orb = !dayOrb ? ORB.moon : mix(ORB.low, ORB.day, clamp(s.alt / 14, 0, 1));
+    const wet = k === 'rain' || k === 'snow' || k === 'storm' || k === 'fog';
+    const cloud = fake && fake.wx ? (fake.wx === 'clear' ? 0 : 90) : wx && wx.cover != null ? wx.cover : k === 'clear' ? 0 : 70;
+    const cover = clamp(cloud / 100, 0, 1) * (wet ? 0.86 : 0.62);
+    const grey = [mix(hex('#141a22'), hex('#59646e'), t), mix(hex('#1c232b'), hex('#7f8b92'), t), mix(hex('#262e36'), hex('#a9b3b6'), t)];
+    const sk = c.sk.map((x, i) => mix(x, grey[i], cover));
+    const g = mix(c.g, mix(c.g, hex('#222b2a'), 0.5), cover);
+    const l4 = mix(g, BG, 0.74);
+    pos = { alt: s.alt, ha: s.ha, top: s.top, day: s.alt > -4 };
     return {
-      phase, kind: k, c1: css(c[0]), c2: css(c[1]), orb: css(orb),
-      ox: (50 + 42 * Math.sin(ha)).toFixed(1) + '%',
-      oy: clamp(72 - (alt / 58) * 60, 12, 74).toFixed(1) + '%',
-      oo: (1 - clamp(g * 1.15, 0, 0.92)).toFixed(2),
-      text: wx && wx.t != null && !(fake && fake.wx) ? (wx.t > 0 ? '+' : wx.t < 0 ? '−' : '') + Math.abs(Math.round(wx.t)) + '° · ' + word(wx.code, k)
+      phase, kind: k,
+      vars: {
+        '--sk0': css(sk[0]), '--sk1': css(sk[1]), '--sk2': css(sk[2]),
+        // далі від нас — ближче до кольору обрію (повітряна димка), ближче — до нашого зеленого
+        '--l1': css(mix(sk[2], g, 0.42)), '--l2': css(mix(sk[2], g, 0.74)), '--l3': css(mix(g, BG, 0.38)), '--l4': css(l4), '--l4b': css(mix(l4, BG, 0.5)),
+        '--w0': css(mix(sk[2], sk[1], 0.3)), '--w1': css(mix(sk[1], g, 0.62)),
+        '--pad': css(mix(g, hex('#3f9e68'), 0.25 + 0.25 * t)),
+        '--sky-orb': css(pos.day ? c.orb : P.night.orb),
+        '--sky-halo': (c.halo * (1 - cover)).toFixed(3),
+        '--sky-oo': clamp(1 - cover * 1.05, 0, 1).toFixed(2),
+        '--sky-stars': (c.stars * (1 - clamp(cloud / 100, 0, 1) * 0.9)).toFixed(2),
+        '--sky-cl': css(mix(sk[2], hex('#ffffff'), 0.12 + 0.38 * t)),
+        '--sky-cirrus': (cloud > 55 ? 0 : 0.22).toFixed(2),
+        '--sky-deck': clamp((cloud - 35) / 55, 0, 1).toFixed(2),
+        // старі назви: смужка під шапкою й відблиск угорі сторінки
+        '--sky1': css(sk[1]), '--sky2': css(sk[2]),
+      },
+      text: wx && wx.t != null && !(fake && fake.wx) ? (wx.t > 0 ? '+' : wx.t < 0 ? '−' : '') + Math.abs(Math.round(wx.t)) + '°, ' + word(wx.code, k)
         : fake && fake.wx ? WORD[fake.wx] || '' : '',
       place: (wx && wx.name) || '',
     };
+  }
+
+  /// Де стоїть світило на сцені: пейзаж розтягується на всю ширину й обрізається, тож рахуємо від справжніх розмірів.
+  /// Сонце йде дугою зліва направо; уночі на його місці — місяць навпроти (проста модель, без фаз).
+  function place() {
+    const el = document.getElementById('sky');
+    if (!el || !el.clientWidth) return;
+    const W = el.clientWidth, H = el.clientHeight;
+    const s = Math.max(W / ART_W, H / ART_H);
+    const vis = W / s;                                        // скільки одиниць пейзажу видно в ширину
+    const left = el.dataset.anchor === 'left' ? 0 : (ART_W - vis) / 2;
+    const ha = pos.day ? pos.ha : Math.atan2(Math.sin(pos.ha - Math.PI), Math.cos(pos.ha - Math.PI));
+    const alt = pos.day ? pos.alt : -pos.alt;
+    const xu = left + vis * (0.5 + 0.4 * Math.sin(ha));
+    el.style.setProperty('--ol', ((xu - left) * s).toFixed(1) + 'px');
+    // Висота — частка від сьогоднішнього полудня: опівдні світило стоїть угорі сцени й улітку, і взимку (коли справжнє
+    // сонце ледь піднімається над обрієм і весь день лежало б на пагорбах). Нижче обрію — ховається за землю.
+    const horizon = (HORIZON - 14) * s, room = Math.max(60, H - horizon - 64);
+    const up = alt >= 0 ? (alt / Math.max(12, pos.top || 40)) * room : alt * 3.3 * s;
+    el.style.setProperty('--ob', Math.min(H - 44, horizon + up).toFixed(1) + 'px');
+    el.style.setProperty('--rx', xu.toFixed(1));
   }
 
   let last = '';
   function paint() {
     const v = compute();
     const sig = JSON.stringify(v);
-    if (sig === last) return;
-    last = sig;
-    const r = document.documentElement;
-    r.style.setProperty('--sky1', v.c1);
-    r.style.setProperty('--sky2', v.c2);
-    r.style.setProperty('--sky-orb', v.orb);
-    r.style.setProperty('--sky-ox', v.ox);
-    r.style.setProperty('--sky-oy', v.oy);
-    r.style.setProperty('--sky-oo', v.oo);
-    r.dataset.sky = v.phase;
-    r.dataset.wx = v.kind;
-    document.querySelectorAll('[data-sky-text]').forEach((el) => {
-      el.textContent = v.text;
-      el.title = v.place ? 'Погода: ' + v.place : '';
-      el.hidden = !v.text;
-    });
+    if (sig !== last) {
+      last = sig;
+      const r = document.documentElement;
+      for (const k of Object.keys(v.vars)) r.style.setProperty(k, v.vars[k]);
+      r.dataset.sky = v.phase;
+      r.dataset.wx = v.kind;
+      document.querySelectorAll('[data-sky-text]').forEach((el) => {
+        el.textContent = v.text ? (v.place ? v.place + ': ' : '') + v.text + '.' : '';
+        el.hidden = !v.text;
+      });
+    }
+    place();
   }
 
   /// Погода мого району (той, що вибрано для «Тривоги»): сервер тримає її чверть години, ми питаємо не частіше.
@@ -136,21 +175,43 @@
       .catch(() => { /* сервер без погоди чи Open-Meteo мовчить — небо лишається ясним */ });
   }
 
-  /// ?sky=06:10&wx=rain — глянути на небо о будь-якій порі й за будь-якої погоди, не чекаючи вечора.
-  function fromUrl() {
-    const q = new URLSearchParams(location.search);
-    const t = /^(\d{1,2}):(\d{2})$/.exec(q.get('sky') || '');
-    const w = q.get('wx');
-    if (!t && !w) return;
-    let at = null;
-    if (t) { at = new Date(); at.setHours(+t[1], +t[2], 0, 0); }
-    fake = { at, wx: w && WORD[w] ? w : null };
+  const parseTime = (s) => {
+    const t = /^(\d{1,2}):(\d{2})$/.exec(s || '');
+    if (!t) return null;
+    const at = new Date();
+    at.setHours(+t[1], +t[2], 0, 0);
+    return at;
+  };
+
+  /// Пейзаж — окремий файл: вставляємо його в сцену розміткою (щоб кольори брались зі змінних), раз на сторінку.
+  function mount() {
+    const el = document.getElementById('sky');
+    if (!el || el.dataset.ready) return;
+    el.dataset.ready = '1';
+    const narrow = window.matchMedia('(max-width: 900px)');
+    const anchor = () => {
+      // На телефоні показуємо лівий край пейзажу — там очерет, тополі й латаття; середина без них порожня.
+      el.dataset.anchor = narrow.matches ? 'left' : 'mid';
+      const svg = el.querySelector('svg');
+      if (svg) svg.setAttribute('preserveAspectRatio', narrow.matches ? 'xMinYMax slice' : 'xMidYMax slice');
+      place();
+    };
+    fetch('/static/obrii.svg').then((r) => (r.ok ? r.text() : '')).then((t) => {
+      if (!t) return;
+      el.querySelector('.sky-art').innerHTML = t;
+      anchor();
+    }).catch(() => { /* без пейзажу лишається небо-градієнт */ });
+    narrow.addEventListener?.('change', anchor);
+    if (window.ResizeObserver) new ResizeObserver(place).observe(el);
+    anchor();
   }
 
   window.HSky = {
     init(opts) {
       o = opts || {};
-      fromUrl();
+      const q = new URLSearchParams(location.search);
+      if (q.get('sky') || q.get('wx')) fake = { at: parseTime(q.get('sky')), wx: WORD[q.get('wx')] ? q.get('wx') : null };
+      mount();
       paint();
       setInterval(() => { if (!document.hidden) { paint(); load(false); } }, 5 * 60000);
       document.addEventListener('visibilitychange', () => { if (!document.hidden) { paint(); load(false); } });
@@ -159,16 +220,10 @@
     ready() { load(true); },
     /// Для перевірок і показу: HSky.preview({ time: '21:40', wx: 'snow' }); без аргументів — назад до справжнього.
     preview(p) {
-      if (!p) fake = null;
-      else {
-        let at = null;
-        const t = /^(\d{1,2}):(\d{2})$/.exec(p.time || '');
-        if (t) { at = new Date(); at.setHours(+t[1], +t[2], 0, 0); }
-        fake = { at, wx: p.wx && WORD[p.wx] ? p.wx : null };
-      }
+      fake = p ? { at: parseTime(p.time), wx: p.wx && WORD[p.wx] ? p.wx : null } : null;
       paint();
     },
-    /// Намалювали нову сцену (головна) — поставити їй підпис і кольори ще раз.
+    /// Сцена з'явилась чи змінила розмір (зайшли на головну) — розставити світило й підписи ще раз.
     repaint() { last = ''; paint(); },
   };
 })();

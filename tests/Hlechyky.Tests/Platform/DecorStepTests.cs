@@ -51,7 +51,7 @@ public class DecorStepTests
     [Fact]
     public void Every_stepped_name_is_a_real_keyframes()
     {
-        var css = string.Join("\n", new[] { "static/style.css", "static/stats-news.css", "games/core.css", "games/dock.css" }.Select(Web));
+        var css = string.Join("\n", new[] { "static/style.css", "static/polyva.css", "static/stats-news.css", "games/core.css", "games/dock.css" }.Select(Web));
         foreach (var n in Stepped())
             Assert.True(Regex.IsMatch(css, @"@keyframes\s+" + Regex.Escape(n) + @"\s*\{"),
                 $"krok.js крокує «{n}», а такої @keyframes на сайті нема — перейменували? Тоді анімація знову йде щокадру");

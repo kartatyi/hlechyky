@@ -8,7 +8,8 @@
   let o = null, esc = (s) => String(s == null ? '' : s);
   let shown = false, root = null;
   let daily = null, paper = null, loadedAt = 0;
-  const sig = { air: '', people: '', tables: '', daily: '', chat: '', paper: '', hero: '', lead: '' };
+  let popular = null, art = null, recent = null;   // що найбільше грають, афіші ігор (games/art/art.json), що щойно грало
+  const sig = { air: '', people: '', tables: '', daily: '', chat: '', paper: '', hero: '', lead: '', glead: '', posters: '', covers: '' };
 
   const G = () => window.HGames, P = () => window.HPeople;
   const same = (a, b) => String(a || '').toLowerCase() === String(b || '').toLowerCase();
@@ -36,8 +37,11 @@
     return '<section class="hm-hero"><div class="hm-hero-t"><h1>Радіо, яке ставимо самі</h1>'
       + '<p>Одна черга на всіх: закидаєш пісню — її чують усі, хто тут. Поруч балачки й столи з іграми на компанію. Реєстрації немає — назвись і заходь.</p>'
       + '<div class="hm-hero-b"><button type="button" class="primary hm-listen" data-act="listen">▶ Слухати зараз</button>'
-      + '<button type="button" class="tonal" data-act="nick">Назватись</button></div></div>'
-      + '<div class="hm-glek"><img src="/static/glek.svg" alt=""><div class="hm-say">Здоров! Закинь пісню — поставлю в чергу.</div></div></section>';
+      + '<button type="button" class="tonal" data-act="nick">Назватись</button>'
+      // що діється просто зараз — тим самим рядком, що й своїм, тільки поруч із кнопками
+      + '<span class="hm-hero-n"><span data-hm="glead"></span><span class="hm-wx" data-sky-text hidden></span></span></div></div>'
+      // Глек стоїть на березі пейзажу й каже своє — не окремою карткою, а частиною сцени
+      + '<div class="hm-glek"><div class="hm-say">Здоров! Закинь пісню — поставлю в чергу.</div><img src="/static/glek.svg" alt=""></div></section>';
   }
 
   /// «Троє тут, за одним столом грають, в ефірі Lynyrd Skynyrd» — усе живе одним реченням.
@@ -107,12 +111,54 @@
     if (o.me.games === false || !g) return '';
     const list = rooms().map((r) => ({ r, l: g.roomLink(r.id) })).filter((x) => x.l)
       .sort((a, b) => (b.l.canSit - a.l.canSit) || (b.l.mine - a.l.mine));
+    if (!list.length) return '';   // порожніх столів не показуємо: замість сумної картки нижче стоять афіші ігор
     const rows = list.slice(0, 4).map(({ r, l }) => '<div class="hm-row"><span class="hm-gic">' + (g.artIcon ? g.artIcon(r.game) : l.icon) + '</span>'
       + '<span class="hm-rt"><b>' + esc(g.titleOf(r.game)) + '</b><small>' + esc(l.who) + '</small></span>'
       + '<button type="button" class="' + (l.canSit ? 'tonal' : 'ghost') + '" data-act="' + (l.canSit ? 'sit' : 'open') + '" data-room="' + esc(r.id) + '">' + esc(l.label) + '</button></div>').join('');
     return '<h2>За столами' + (list.length ? ' <span class="count">' + list.length + '</span>' : '') + '</h2>'
       + (rows ? '<div class="hm-list">' + rows + '</div>' : '<div class="empty">Столи порожні. Відкрий свій — підсядуть.</div>')
       + '<a class="hm-all" href="#games">усі ігри →</a>';
+  }
+
+  /// Афіші: у що тут грають найбільше (за місяць). Сторінка не порожня, навіть коли зараз ніхто не грає, —
+  /// і одразу видно, що це за місце. Натиск: соло — у гру, решта — «+ Стіл».
+  function postersHtml() {
+    const g = G();
+    if (o.me.games === false || !g || !art || !popular) return '';
+    const by = {};
+    for (const x of (g.catalog && g.catalog.games) || []) by[x.id] = x;
+    const seen = new Set();
+    const list = popular.filter((p) => {
+      const c = by[p.game], a = art.b && art.b[p.game];
+      if (!c || !a || c.hidden || /-daily$/.test(p.game) || seen.has(a)) return false;
+      seen.add(a);
+      return true;
+    }).slice(0, 8);
+    if (list.length < 3) return '';
+    const total = ((g.catalog && g.catalog.games) || []).filter((x) => !x.hidden).length;
+    return '<div class="hm-shelf-h"><h2>У що граємо</h2><a href="#games">усі ' + (total || '') + ' →</a></div><div class="hm-posters">'
+      + list.map((p) => {
+        const c = by[p.game];
+        return '<button type="button" class="hm-poster" data-act="game" data-game="' + esc(p.game) + '" data-solo="' + (c.maxPlayers === 1 ? 1 : 0) + '">'
+          + '<img src="/games/art/b/' + encodeURIComponent(art.b[p.game]) + '.svg" alt="" loading="lazy" decoding="async" draggable="false">'
+          + '<span><b>' + esc(c.title) + '</b><small>' + (c.maxPlayers === 1 ? 'соло' : 'до ' + c.maxPlayers) + ' · ' + plural(p.rooms, 'партія', 'партії', 'партій') + ' за місяць</small></span></button>';
+      }).join('') + '</div>';
+  }
+
+  /// Обкладинки того, що щойно грало: видно смак ефіру, і є на що глянути, поки тихо.
+  function coversHtml() {
+    if (!recent) return '';
+    const seen = new Set();
+    const list = recent.filter((h) => {
+      const t = h.track;
+      if (!t || !t.thumbUrl || seen.has(t.id)) return false;
+      seen.add(t.id);
+      return true;
+    }).slice(0, 12);
+    if (list.length < 4) return '';
+    return '<div class="hm-shelf-h"><h2>Щойно грало</h2><a href="#lib/history">уся історія →</a></div><div class="hm-covers">'
+      + list.map((h) => '<a class="hm-cv" href="#lib/history" title="' + esc((h.track.artist ? h.track.artist + ' — ' : '') + h.track.title) + '">'
+        + '<img src="' + esc(h.track.thumbUrl) + '" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer"><span><b>' + esc(h.track.title) + '</b><small>' + esc(h.track.artist || '') + '</small></span></a>').join('') + '</div>';
   }
 
   function dailyHtml() {
@@ -158,16 +204,14 @@
     root = document.getElementById('home');
     if (!root || root.dataset.ready) return;
     root.dataset.ready = '1';
-    // «Обрій»: небо за справжнім часом і погодою (web/sky.js ставить кольори й підпис). Самих лише плям кольору досить —
-    // градієнт, сонце чи місяць, один пагорб; дощ і сніг — лише тут, і лише коли вони справді йдуть.
-    root.innerHTML = '<div class="sky-scene" aria-hidden="true"><i class="sky-stars"></i><i class="sky-orb"></i><i class="sky-clouds"></i><i class="sky-fall"></i>'
-      + '<svg class="sky-land" viewBox="0 0 1200 120" preserveAspectRatio="none"><path d="M0 38 C150 14 300 40 450 50 C620 10 800 18 960 46 C1050 30 1130 34 1200 22 V120 H0Z"/></svg>'
-      + '<span class="sky-text" data-sky-text hidden></span></div>'
-      + '<div data-hm="hero"></div>'
-
-      + '<div class="hm-top"><h1 data-hm="h1">Зараз у Глечиках</h1><p class="hm-lead" data-hm="lead"></p></div>'
+    // Верх сторінки стоїть у пейзажі «Обрій» (#sky в index.html, web/sky.js): заголовок — у небі, картки — на березі.
+    // .hm-skybox тримає висоту рівно таку, щоб перша картка лягла на передній план, а не на воду.
+    root.innerHTML = '<div class="hm-skybox"><div data-hm="hero"></div>'
+      + '<div class="hm-top"><h1 data-hm="h1">Зараз у Глечиках</h1><p class="hm-lead"><span data-hm="lead"></span><span class="hm-wx" data-sky-text hidden></span></p></div></div>'
       + '<div class="hm-g2"><section class="panel hm-air" data-hm="air"></section><section class="panel hm-people" data-hm="people"></section></div>'
+      + '<section class="hm-shelf" data-hm="posters" hidden></section>'
       + '<div class="hm-g3"><section class="panel" data-hm="tables"></section><section class="panel" data-hm="daily"></section><section class="panel hm-chat" data-hm="chat"></section></div>'
+      + '<section class="hm-shelf" data-hm="covers" hidden></section>'
       + '<div class="hm-strip" data-hm="paper"></div>';
     root.addEventListener('click', onClick);
     if (window.HSky) HSky.repaint();
@@ -184,6 +228,11 @@
     else if (act === 'sit' && g) { if (!o.me.nick) o.askNick(true); else g.sitAt(b.dataset.room); }
     else if (act === 'open' && g) g.openAt(b.dataset.room);
     else if (act === 'daily') o.go('#games');
+    else if (act === 'game' && g) {
+      if (!o.me.nick) o.askNick(true);
+      else if (b.dataset.solo === '1') g.openSolo(b.dataset.game);
+      else o.go('#games/new/' + encodeURIComponent(b.dataset.game));
+    }
     else if (act === 'chat') o.openChat();
   }
 
@@ -191,11 +240,12 @@
     if (!shown || !root) return;
     const st = o.state();
     if (!st) return;
-    if (put('hero', heroHtml())) root.classList.toggle('guest', !o.me.nick);
+    if (put('hero', heroHtml())) { root.classList.toggle('guest', !o.me.nick); sig.glead = ''; if (window.HSky) HSky.repaint(); }
     put('lead', esc(leadText(st)));
+    put('glead', esc(leadText(st)));
     if (put('air', airHtml(st))) o.paintPlay();
     put('people', peopleHtml(st));
-    for (const [id, html] of [['tables', tablesHtml()], ['daily', dailyHtml()]]) {
+    for (const [id, html] of [['tables', tablesHtml()], ['daily', dailyHtml()], ['posters', postersHtml()], ['covers', coversHtml()]]) {
       put(id, html);
       const box = el(id);
       if (box) box.hidden = !html;
@@ -221,6 +271,12 @@
     loadedAt = Date.now();
     if (o.me.games !== false) o.api('GET', '/api/games/daily').then((d) => { daily = d; paint(); }).catch(() => { daily = daily || { puzzles: [] }; paint(); });
     o.api('GET', '/api/stats/gazette').then((d) => { paper = d; paint(); }).catch(() => { /* без вісника сторінка теж ціла */ });
+    o.api('GET', '/api/history?limit=24').then((d) => { recent = Array.isArray(d) ? d : []; paint(); }).catch(() => { /* без обкладинок — без полиці */ });
+    if (o.me.games !== false) {
+      o.api('GET', '/api/games/popular?days=30').then((d) => { popular = (d && d.games) || []; paint(); }).catch(() => { popular = []; });
+      if (!art) fetch('/games/art/art.json').then((r) => (r.ok ? r.json() : null)).then((m) => { art = m || { b: {} }; paint(); }).catch(() => { art = { b: {} }; });
+    }
+
   }
 
   window.HHome = {
