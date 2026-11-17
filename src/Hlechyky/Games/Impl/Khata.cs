@@ -39,7 +39,8 @@ public sealed class Khata : Game
     sealed record Row(int Seat, double Value, double Ratio, int Points);
 
     /// <summary>Рядок підсумку партії: квартира, правда й найкраще число; для стороннього оголошення — посилання на нього.</summary>
-    sealed record Recap(string City, string Unit, string Per, int Price, string Photo, string? Link, int Best, double? Value, int Points);
+    sealed record Recap(string City, string Unit, string Per, int Price, string Photo, string? Link, int Best, double? Value, int Points,
+        bool Inner = false);
 
     public override GameInfo Info { get; } = new(
         GameId, "Здам хату", "«Здам хату»", GameGroup.Party, 1, MaxSeats,
@@ -144,30 +145,52 @@ public sealed class Khata : Game
     List<KhataFlat> Pick()
     {
         var pool = Store?.Fit(_regions) ?? [];
+        // Оголошення OLX — лише для столів, де всі свої (з акаунтами): гра внутрішня, гостеві з вулиці їх не показуємо.
+        if (GuestAtTable()) pool.RemoveAll(f => f.Source == KhataSources.Olx);
         for (var i = pool.Count - 1; i > 0; i--)
         {
             var j = Ctx.Rng.Next(i + 1);
             (pool[i], pool[j]) = (pool[j], pool[i]);
         }
         var table = GameSeen.Table(Ctx, MaxSeats);
-        // OrderBy стабільний: порядок «свіжості» всередині обох груп лишається.
-        var ordered = GameSeen.Order(pool, f => f.Key, _seen!.Peek(GameId, table))
-            .OrderBy(f => table.Contains(GameSeen.NickKey(f.Author)) ? 1 : 0).ToList();
-        // Не більше однієї квартири з міста на партію, поки міст вистачає: п'ять Парижів поспіль — це вже не гра, а завчання.
+        var fresh = GameSeen.Order(pool, f => f.Key, _seen!.Peek(GameId, table));
+        var others = fresh.Where(f => !table.Contains(GameSeen.NickKey(f.Author))).ToList();
+        var mine = fresh.Where(f => table.Contains(GameSeen.NickKey(f.Author)));
+
+        // Регіони — по черзі (Україна, Європа, світ; порядок випадковий): десять тисяч оголошень світу не мають затоптати
+        // кількасот українських. У кожному регіоні — від найсвіжішого. Не більше однієї квартири з міста на партію, поки
+        // міст вистачає: п'ять Парижів поспіль — це вже не гра, а завчання.
+        var queues = others.GroupBy(f => f.Region, StringComparer.Ordinal).Select(g => new Queue<KhataFlat>(g)).ToList();
+        for (var i = queues.Count - 1; i > 0; i--)
+        {
+            var j = Ctx.Rng.Next(i + 1);
+            (queues[i], queues[j]) = (queues[j], queues[i]);
+        }
         var picked = new List<KhataFlat>(_count);
         var cities = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var f in ordered)
+        var spare = new List<KhataFlat>();
+        while (picked.Count < _count && queues.Any(q => q.Count > 0))
+            foreach (var q in queues)
+            {
+                if (picked.Count == _count) break;
+                while (q.Count > 0)
+                {
+                    var f = q.Dequeue();
+                    if (cities.Add(f.City)) { picked.Add(f); break; }
+                    spare.Add(f);
+                }
+            }
+        // Міст забракло — добираємо повторами, а коли й того мало — квартирами тих, хто за столом (автор свою пропустить).
+        foreach (var f in spare.Concat(mine))
         {
             if (picked.Count == _count) break;
-            if (cities.Add(f.City)) picked.Add(f);
-        }
-        foreach (var f in ordered)
-        {
-            if (picked.Count == _count) break;
-            if (!picked.Contains(f)) picked.Add(f);
+            picked.Add(f);
         }
         return picked;
     }
+
+    /// <summary>Чи сидить за столом хтось без акаунта.</summary>
+    bool GuestAtTable() => Enumerable.Range(0, MaxSeats).Any(s => Ctx.Seated(s) && Auth.IsGuestNick(Ctx.NickOf(s)));
 
     void Open(DateTimeOffset now)
     {
@@ -309,7 +332,8 @@ public sealed class Khata : Game
             if (_seenBefore[r.Seat] is { } seen && !seen.Contains(flat.Key) && !Owns(r.Seat, flat)) _fresh[r.Seat] += r.Points;
         }
         _recap.Add(new Recap(flat.City, flat.Unit, flat.Per, flat.Price, flat.Thumb, flat.Link,
-            rows.Count == 0 ? -1 : rows[0].Seat, rows.Count == 0 ? null : rows[0].Value, rows.Count == 0 ? 0 : rows[0].Points));
+            rows.Count == 0 ? -1 : rows[0].Seat, rows.Count == 0 ? null : rows[0].Value, rows.Count == 0 ? 0 : rows[0].Points,
+            Inner: flat.Source == KhataSources.Olx));
         _reveal = rows;
         _say = Flavor(rows);
         _phase = PhaseReveal;
@@ -356,12 +380,17 @@ public sealed class Khata : Game
         var flat = Current;
         // У паузі перед квартирою ні фото, ні міста у виді нема — зазирнути в консоль раніше за інших не вийде.
         var shown = _started && flat is not null && _phase is PhaseAsk or PhaseReveal;
+        // Оголошення OLX бачать лише ті, хто сидить за столом: гра внутрішня, а глядачем може зайти будь-хто.
+        var inner = flat is { Source: KhataSources.Olx } && me < 0;
+        var closed = shown && inner;
+        if (closed) shown = false;
         var store = Store;
         return new
         {
             round = _at + 1,
             of = _started ? _flats.Count : _count,
             phase = _phase,
+            closed,
             city = shown ? flat!.City : "",
             unit = shown ? flat!.Unit : null,
             // за місяць (оренда) чи за ніч (Airbnb) — стоїть біля поля поруч зі знаком валюти
@@ -381,8 +410,8 @@ public sealed class Khata : Game
                 // Стороннє оголошення: звідки воно, що це за житло (до відповіді цього не видно) й посилання на нього.
                 id = flat.Id,
                 source = flat.Source,
-                about = flat.About,
-                link = flat.Link,
+                about = inner ? null : flat.About,
+                link = inner ? null : flat.Link,
                 say = _say,
                 rows = _reveal.Select(r => new { seat = r.Seat, value = r.Value, ratio = r.Ratio, points = r.Points }).ToArray(),
             },
@@ -397,7 +426,9 @@ public sealed class Khata : Game
             },
             recap = _phase != PhaseDone ? null : _recap.Select(r => new
             {
-                city = r.City, unit = r.Unit, per = r.Per, price = r.Price, photo = r.Photo, link = r.Link,
+                city = r.City, unit = r.Unit, per = r.Per, price = r.Price,
+                // глядачеві оголошення OLX лишаються закритими й у підсумку: місто й ціна — так, фото й посилання — ні
+                photo = r.Inner && me < 0 ? null : r.Photo, link = r.Inner && me < 0 ? null : r.Link,
                 best = r.Best >= 0 ? r.Best : (int?)null, value = r.Value, points = r.Points,
             }).ToArray(),
             // Скільки квартир у банку для обраних міст і всього — для лобі.

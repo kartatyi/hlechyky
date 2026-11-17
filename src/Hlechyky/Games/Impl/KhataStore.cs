@@ -47,14 +47,29 @@ public static class KhataSources
     public const string Airbnb = "airbnb";
     /// <summary>Офіційний API DIM.RIA: довгострокова оренда в Україні, ціна за місяць, усі фото оголошення.</summary>
     public const string Ria = "ria";
+    /// <summary>
+    /// Оренда з OLX — лише для внутрішньої гри кола друзів: набирається по кнопці розробника, живе тиждень
+    /// (<see cref="KhataOlx.Life"/>), іде тільки за столи, де всі з акаунтами, глядачам не показується.
+    /// </summary>
+    public const string Olx = "olx";
 
-    public static string Label(string source) => source switch { Airbnb => "Airbnb", Ria => "DIM.RIA", _ => "" };
+    public static string Label(string source) => source switch { Airbnb => "Airbnb", Ria => "DIM.RIA", Olx => "OLX", _ => "" };
 
-    /// <summary>Адреса фото для показу: сервер фото Airbnb сам віддає зменшений варіант (оригінали важать по 2–14 МБ).</summary>
-    public static string Show(string source, string photo) => source == Airbnb ? photo + "?im_w=960" : photo;
+    /// <summary>Адреса фото для показу: сервери фото Airbnb й OLX самі віддають зменшений варіант (оригінали важать мегабайти).</summary>
+    public static string Show(string source, string photo) => source switch
+    {
+        Airbnb => photo + "?im_w=960",
+        Olx => photo + ";s=1000x1000",
+        _ => photo,
+    };
 
     /// <summary>Мініатюра — для списку «Як це було» й перевірки, чи фото ще живе.</summary>
-    public static string Thumb(string source, string photo) => source == Airbnb ? photo + "?im_w=320" : photo;
+    public static string Thumb(string source, string photo) => source switch
+    {
+        Airbnb => photo + "?im_w=320",
+        Olx => photo + ";s=320x320",
+        _ => photo,
+    };
 }
 
 /// <summary>
@@ -358,18 +373,43 @@ public sealed partial class KhataStore
         return null;
     }
 
-    /// <summary>Зняти зовнішнє оголошення (фото зникло або розробник прибрав). Повторний імпорт його не поверне.</summary>
+    /// <summary>
+    /// Зняти зовнішнє оголошення (фото зникло або розробник прибрав). Повторний імпорт його не поверне. У рядку бази
+    /// лишається тільки «таке вже було» — джерело й номер; міста, ціни, фото й посилання ми по собі не тримаємо.
+    /// </summary>
     public bool Drop(long id)
     {
         lock (_gate)
         {
             var flat = _all.FirstOrDefault(f => f.Id == id && f.External);
             if (flat is null) return false;
-            _db?.Exec("UPDATE khata_flats SET removed = 1 WHERE id = $id", ("$id", id));
+            _db?.Exec(Forget + " WHERE id = $id", ("$id", id));
             _gone.Add(GoneKey(flat.Source, flat.ExtId));
             _all = [.. _all.Where(f => f.Id != id)];
             Publish();
             return true;
+        }
+    }
+
+    const string Forget = "UPDATE khata_flats SET removed = 1, city = '', price = 0, photos = '[]', link = NULL, about = NULL";
+
+    /// <summary>
+    /// Відпустити оголошення джерела, набрані раніше за <paramref name="before"/>: з гри геть, з бази — теж (лишається
+    /// лише позначка «вже було»). Так живе OLX: набір на тиждень, а не архів чужих оголошень.
+    /// </summary>
+    public int Expire(string source, DateTimeOffset before)
+    {
+        if (source == KhataSources.Own) return 0;
+        lock (_gate)
+        {
+            var old = _all.Where(f => f.Source == source && f.At < before).ToList();
+            if (old.Count == 0) return 0;
+            _db?.Exec(Forget + " WHERE source = $s AND removed = 0 AND at < $t", ("$s", source), ("$t", Iso(before)));
+            foreach (var f in old) _gone.Add(GoneKey(f.Source, f.ExtId));
+            var ids = old.Select(f => f.Id).ToHashSet();
+            _all = [.. _all.Where(f => !ids.Contains(f.Id))];
+            Publish();
+            return old.Count;
         }
     }
 

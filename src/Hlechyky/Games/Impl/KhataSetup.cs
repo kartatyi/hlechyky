@@ -51,6 +51,7 @@ public static class KhataSetup
         api.MapPost("/flat/edit", Edit);
         api.MapPost("/flat/remove", Remove);
         api.MapPost("/import", Import);
+        api.MapPost("/import/olx", ImportOlx);
         api.MapPost("/broken", Broken);
         api.MapGet("/pic/{file}", (string file, KhataStore store, HttpContext c) => Pic(file, store, c));
         return app;
@@ -69,6 +70,18 @@ public static class KhataSetup
         return import.Start()
             ? Results.Ok(new { ok = true, message = "Набираю світ — це кілька хвилин, поступ видно тут" })
             : Results.BadRequest(new { ok = false, message = "Імпорт уже йде" });
+    }
+
+    /// <summary>
+    /// POST /api/games/khata/import/olx — розробник набирає оренду з OLX на тиждень: кількасот оголошень, з паузами; старші
+    /// за тиждень при цьому зникають. Лише по кнопці — сам сервер на OLX не ходить ніколи.
+    /// </summary>
+    public static IResult ImportOlx(HttpContext c, KhataImport import)
+    {
+        if (!Auth.IsAdmin(c)) return Results.BadRequest(new { ok = false, message = AdminOnly });
+        return import.StartOlx()
+            ? Results.Ok(new { ok = true, message = "Набираю оголошення OLX — хвилини дві-три, поступ видно тут" })
+            : Results.BadRequest(new { ok = false, message = "Набір уже йде" });
     }
 
     public sealed record BrokenRequest(string? Url);
@@ -111,6 +124,13 @@ public static class KhataSetup
                 own = store.BySource.GetValueOrDefault(KhataSources.Own),
                 airbnb = store.BySource.GetValueOrDefault(KhataSources.Airbnb),
                 ria = store.BySource.GetValueOrDefault(KhataSources.Ria),
+                olx = store.BySource.GetValueOrDefault(KhataSources.Olx),
+            },
+            // набір OLX на тиждень — лише розробнику
+            olx = !admin || import is null ? null : new
+            {
+                running = import.Olx.Running, done = import.Olx.Done, total = import.Olx.Total, added = import.Olx.Added,
+                message = import.Olx.Message, finishedAt = import.Olx.FinishedAt, days = (int)KhataOlx.Life.TotalDays,
             },
             // набір України з DIM.RIA — лише розробнику: чи є ключ і що зараз відбувається
             ria = !admin || ria is null ? null : new { key = ria.HasKey, added = ria.Added, message = ria.Message, at = ria.At },

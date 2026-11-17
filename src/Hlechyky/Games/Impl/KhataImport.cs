@@ -60,6 +60,85 @@ public sealed class KhataImport : BackgroundService
     public Progress State => _state;
     public RiaProgress Ria => _ria;
 
+    // ---------------------------------------------------------------------------------------
+    // OLX: набір на тиждень, по кнопці розробника
+    // ---------------------------------------------------------------------------------------
+
+    /// <summary>Пауза між запитами до OLX: набираємо в темпі людини, що гортає сторінки.</summary>
+    public static TimeSpan OlxGap { get; set; } = TimeSpan.FromSeconds(2);
+    volatile Progress _olx = new(false, 0, KhataOlx.Regions, 0, 0, "", null);
+    int _wantOlx;
+    DateTimeOffset _expiredAt;
+
+    public Progress Olx => _olx;
+
+    /// <summary>Розробник просить набрати оренду з OLX на цей тиждень. false — набір уже йде.</summary>
+    public bool StartOlx()
+    {
+        if (_olx.Running || Interlocked.Exchange(ref _wantOlx, 1) == 1) return false;
+        _olx = new(true, 0, KhataOlx.Regions, 0, 0, "Починаю…", null);
+        _wake.Release();
+        return true;
+    }
+
+    /// <summary>Набране з OLX живе тиждень: що старше — геть із гри й з бази.</summary>
+    public int ExpireOlx() => _store.Expire(KhataSources.Olx, _clock.UtcNow - KhataOlx.Life);
+
+    /// <summary>
+    /// Набір з OLX: спершу відпускаємо все, що старше тижня; далі область за областю — сторінка свіжих і сторінка
+    /// найдешевших, з паузами. З області беремо <see cref="KhataOlx.PerRegion"/> незнайомих оголошень. Відмовив сервер
+    /// (403, 429) — зупиняємось одразу, а не стукаємо далі.
+    /// </summary>
+    public async Task RunOlx(CancellationToken ct)
+    {
+        int done = 0, added = 0;
+        void Say(bool running, string message) =>
+            _olx = new(running, done, KhataOlx.Regions, added, 0, message, running ? null : _clock.UtcNow);
+
+        var gone = ExpireOlx();
+        Say(true, gone > 0 ? $"Відпустив старих оголошень: {gone}. Набираю нові…" : "Набираю…");
+        var rng = new Random();
+        for (var region = 1; region <= KhataOlx.Regions; region++)
+        {
+            ct.ThrowIfCancellationRequested();
+            try
+            {
+                var fresh = await OlxPage(KhataOlx.Url(region, cheap: false), ct);
+                if (fresh is not null && OlxGap > TimeSpan.Zero) await Task.Delay(OlxGap, ct);
+                // відмовили на першій сторінці — другої вже не просимо
+                var cheap = fresh is null ? null : await OlxPage(KhataOlx.Url(region, cheap: true), ct);
+                if (fresh is null || cheap is null)
+                {
+                    Say(false, $"OLX відмовив у доступі — зупинився на {done} з {KhataOlx.Regions} областей; додано {added}. Спробуй пізніше");
+                    return;
+                }
+                var picked = KhataOlx.Pick(fresh, cheap, KhataOlx.PerRegion, rng, id => _store.Knows(KhataSources.Olx, id));
+                var (a, _, _) = _store.Import(KhataSources.Olx, picked);
+                added += a;
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+            {
+                _log?.LogWarning(ex, "khata: область OLX {Region} не далася", region);
+            }
+            done++;
+            Say(true, $"областей {done} з {KhataOlx.Regions}, додано {added}");
+            if (OlxGap > TimeSpan.Zero) await Task.Delay(OlxGap, ct);
+        }
+        Say(false, $"Готово: додано {added} оголошень. Вони в грі на тиждень — лише за столами, де всі з акаунтами");
+        _log?.LogInformation("khata: набір OLX — додано {Added}", added);
+    }
+
+    /// <summary>Одна сторінка оголошень. null — сервер відмовив (не стукаємо далі); порожній список — просто нічого.</summary>
+    async Task<List<KhataOlx.Offer>?> OlxPage(string url, CancellationToken ct)
+    {
+        using var req = new HttpRequestMessage(HttpMethod.Get, url);
+        req.Headers.Accept.ParseAdd("application/json");
+        req.Headers.AcceptLanguage.ParseAdd("uk");
+        using var resp = await _http.SendAsync(req, ct);
+        if (resp.StatusCode is HttpStatusCode.Forbidden or HttpStatusCode.TooManyRequests or HttpStatusCode.Unauthorized) return null;
+        return resp.IsSuccessStatusCode ? KhataOlx.Parse(await resp.Content.ReadAsStringAsync(ct)) : [];
+    }
+
     /// <summary>Розробник просить набрати (чи донабрати) світ. false — імпорт уже йде.</summary>
     public bool Start()
     {
@@ -210,7 +289,14 @@ public sealed class KhataImport : BackgroundService
             catch (OperationCanceledException) { break; }
             try
             {
+                // Раз на годину відпускаємо оголошення OLX, яким понад тиждень, — навіть якщо нового набору ніхто не просить.
+                if (_clock.UtcNow - _expiredAt >= TimeSpan.FromHours(1))
+                {
+                    _expiredAt = _clock.UtcNow;
+                    ExpireOlx();
+                }
                 if (Interlocked.Exchange(ref _wanted, 0) == 1) await RunAirbnb(ct);
+                else if (Interlocked.Exchange(ref _wantOlx, 0) == 1) await RunOlx(ct);
                 else if (_suspects.TryDequeue(out var id))
                 {
                     if (_store.Live.FirstOrDefault(f => f.Id == id) is { } flat) await Check(flat, ct);

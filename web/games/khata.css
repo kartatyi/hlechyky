@@ -126,6 +126,8 @@
 .khrecap li { display: flex; gap: 10px; align-items: center; font-size: .9em; line-height: 1.3; }
 .khrecap li img { flex: none; width: 64px; height: 48px; object-fit: cover; border-radius: 6px; background: var(--panel2, rgba(127, 127, 127, .12)); }
 .khrc { min-width: 0; }
+/* глядачеві оголошення OLX закриті й у підсумку — замість мініатюри замочок */
+.khnoimg { flex: none; width: 64px; height: 48px; display: grid; place-items: center; border-radius: 6px; background: var(--panel2, rgba(127, 127, 127, .12)); }
 .khra { color: var(--accent); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .khrb { display: block; color: var(--muted); }
 .khrb b { color: var(--ok); font-weight: 600; }

@@ -226,7 +226,8 @@
     const list = v.recap || [];
     if (!list.length) return '';
     return '<details class="khrecap" open><summary>Як це було · ' + list.length + ' ' + flatsWord(list.length) + '</summary><ol>'
-      + list.map((r) => '<li><img src="' + ctx.esc(r.photo) + '" alt="" loading="lazy" referrerpolicy="no-referrer"><span class="khrc"><b>' + ctx.esc(r.city) + '</b> — '
+      + list.map((r) => '<li>' + (r.photo ? '<img src="' + ctx.esc(r.photo) + '" alt="" loading="lazy" referrerpolicy="no-referrer">' : '<span class="khnoimg">🔒</span>')
+        + '<span class="khrc"><b>' + ctx.esc(r.city) + '</b> — '
         + '<span class="khra">' + money(r.price, r.unit) + ' ' + perText(r.per) + '</span>'
         + (r.link ? ' <a class="khrl" href="' + ctx.esc(r.link) + '"' + OUT + ' title="Відкрити оголошення">↗</a>' : '')
         + (r.best != null ? '<span class="khrb">найближче — ' + ctx.esc(nameAt(ctx, r.best) || ctx.seatName(r.best)) + ': ' + money(r.value, r.unit)
@@ -348,9 +349,12 @@
     const city = root.querySelector('.khcity');
     const cityText = lobby ? 'Господар тисне «Почати» — можна й самому, а хто встигне, підсяде'
       : phase === 'between' ? 'Готуйсь — зараз покажуть квартиру…'
-      : phase === 'done' ? '' : (v.city || '');
+      : phase === 'done' ? ''
+      // оголошення OLX — лише для тих, хто за столом: глядачеві замість фото й міста — оцей рядок
+      : v.closed ? '🔒 Це оголошення бачать лише ті, хто сидить за столом'
+      : (v.city || '');
     if (city.textContent !== cityText) city.textContent = cityText;
-    city.classList.toggle('wait', lobby || phase === 'between');
+    city.classList.toggle('wait', lobby || phase === 'between' || !!v.closed);
     city.hidden = !cityText;
 
     const rules = root.querySelector('.khrules');
@@ -443,7 +447,8 @@
         renderBank(root, ctx);
         // Імпорт світу йде фоном кілька хвилин — поки йде, поступ перечитуємо самі.
         const box = root.querySelector('.khbank');
-        if (st.bank && st.bank.import && st.bank.import.running && box && !box.hidden) {
+        const going = st.bank && ((st.bank.import && st.bank.import.running) || (st.bank.olx && st.bank.olx.running));
+        if (going && box && !box.hidden) {
           clearTimeout(st.poll);
           st.poll = setTimeout(() => { if (root._kh === st) loadBank(root, ctx, true); }, 3000);
         }
@@ -515,10 +520,12 @@
       const src = b.bySource || {};
       // Звідки квартири — і обов'язкові згадки джерел: Inside Airbnb (CC BY 4.0) і DIM.RIA (умова їхнього API — посилання).
       const from = [];
+      if (src.olx) from.push('з України — ' + num(src.olx) + ' оголошень оренди з OLX (за місяць, з усіма фото; на цей тиждень і лише за столами, де всі з акаунтами)');
       if (src.ria) from.push('з України — ' + num(src.ria) + ' оголошень DIM.RIA (за місяць, з усіма фото)');
       if (src.airbnb) from.push('зі світу — ' + num(src.airbnb) + ' оголошень Airbnb (за ніч, одне фото)');
       if (src.own) from.push('від гравців — ' + num(src.own));
-      if (src.ria || src.airbnb) html += '<div class="muted small">Оголошення справжні: ' + from.join('; ') + '. '
+      if (src.olx || src.ria || src.airbnb) html += '<div class="muted small">Оголошення справжні: ' + from.join('; ') + '. '
+        + (src.olx ? 'Оренда — <a href="https://www.olx.ua/uk/nedvizhimost/kvartiry/dolgosrochnaya-arenda-kvartir/"' + OUT + '>OLX</a>. ' : '')
         + (src.ria ? 'Оренда в Україні — <a href="https://dom.ria.com/uk/"' + OUT + '>DIM.RIA</a>. ' : '')
         + (src.airbnb ? 'Дані світу — <a href="https://insideairbnb.com/"' + OUT + '>Inside Airbnb</a>, CC BY 4.0. ' : '')
         + 'Фото показуються просто з сайтів-джерел.</div>';
@@ -530,6 +537,12 @@
           ? '<span>🌍 Набираю світ: ' + im.done + ' з ' + im.total + ' міст · нових ' + num(im.added) + ' · ' + ctx.esc(im.message || '') + '</span>'
           : '<button type="button" class="ghost" data-kh="import">🌍 ' + (src.airbnb ? 'Донабрати світ' : 'Набрати світ') + ' з Inside Airbnb</button>'
             + (im.message ? '<span class="muted small">' + ctx.esc(im.message) + '</span>' : '')) + '</div>';
+        // OLX — лише по цій кнопці: кількасот оголошень на тиждень, старші зникають самі.
+        const olx = b.olx || {};
+        html += '<div class="khimp">' + (olx.running
+          ? '<span>🏚 Набираю OLX: ' + ctx.esc(olx.message || '') + '</span>'
+          : '<button type="button" class="ghost" data-kh="olx">🏚 ' + (src.olx ? 'Донабрати' : 'Набрати') + ' оренду з OLX на тиждень</button>'
+            + (olx.message ? '<span class="muted small">' + ctx.esc(olx.message) + '</span>' : '')) + '</div>';
         // Україна набирається сама, потроху (пакет DIM.RIA дає обмаль запитів на годину) — щойно в налаштуваннях є ключ.
         const ria = b.ria || {};
         html += '<div class="khimp muted small"><span>Україна (DIM.RIA): ' + (ria.key
@@ -699,6 +712,7 @@
       case 'view': { const f = flatOf(st, id); if (f) openViewer(root, f.photos, 0); break; }
       case 'approve': bankAct(root, ctx, '/flat/approve', { id }); break;
       case 'import': bankAct(root, ctx, '/import', {}); break;
+      case 'olx': bankAct(root, ctx, '/import/olx', {}); break;
       case 'remove': {
         const f = flatOf(st, id);
         bankAct(root, ctx, '/flat/remove', { id }, 'Зняти квартиру' + (f ? ' «' + f.city + '»' : '') + '? Фото видаляться.');
