@@ -133,6 +133,7 @@
 
   async function setRegion(r) {
     keepRegion(r);
+    if (window.HSky) HSky.ready();   // інший район — інша погода
     pending = true;
     paint();
     if (o.me.account) { try { await o.api('POST', '/api/tryvoga/region', r); } catch { /* район лишиться хоч у браузері */ } }
@@ -1655,5 +1656,6 @@
   /// Після /api/me: уже відомо, чи це акаунт (чий район головніший).
   function ready() { refresh(); }
 
-  window.HTryvoga = { init, ready, ping, show, hide, refresh };
+  /// Область мого району — небо (web/sky.js) питає для неї погоду.
+  window.HTryvoga = { init, ready, ping, show, hide, refresh, oblast: () => cur().oblast || '' };
 })();

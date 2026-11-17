@@ -219,3 +219,51 @@ body.route-home .hellobar { display: none; }
 .hm.guest .hm-air .bigplay.primary { background: var(--panel3); color: var(--accent); }
 /* Ефір лежить — у шапці телефона з'являється чип «ефір ↓»; назві розділу поруч лишалась одна літера, тож ховаємо її. */
 @media (max-width: 560px) { body.air-down header .hdrtitle { display: none; } }
+
+/* ---- 🌅 небо за справжнім часом і погодою (web/sky.js ставить змінні й data-sky / data-wx на <html>) ----
+   Кольори міняються раз на кілька хвилин, без переходів. Рухається лише дощ і сніг у сцені на головній — і то кроком
+   (krok.js, 10 разів на секунду), а в кого «менше руху» — не рухається зовсім. */
+:root { --sky1: #0d1830; --sky2: #172a3d; --sky-orb: #e9e6d2; --sky-ox: 76%; --sky-oy: 20%; --sky-oo: 1; }
+/* Відблиск угорі сторінки був завжди зеленкуватий — тепер бере відтінок неба. Низ лишається нашим #0f1f18. */
+body { background: radial-gradient(1200px 600px at 20% -10%, color-mix(in srgb, var(--sky2) 30%, #1d3a2c) 0%, var(--bg) 55%); }
+/* Тонка смужка неба під шапкою — на кожній сторінці. */
+header::after { content: ''; position: absolute; left: 0; right: 0; top: 100%; height: 3px; pointer-events: none; background: linear-gradient(90deg, var(--sky1), var(--sky2)); }
+/* Сцена «Обрій» на головній: небо, сонце чи місяць, один пагорб кольору сторінки — сцена ніби виростає з неї. */
+.sky-scene { position: relative; height: 190px; overflow: hidden; isolation: isolate; border-radius: var(--radius); background: linear-gradient(180deg, var(--sky1) 0%, var(--sky2) 80%); }
+.sky-scene > i { position: absolute; display: block; }
+.sky-orb { left: var(--sky-ox); top: var(--sky-oy); width: 46px; height: 46px; margin: -23px 0 0 -23px; border-radius: 50%; background: var(--sky-orb); opacity: var(--sky-oo); box-shadow: 0 0 44px 12px color-mix(in srgb, var(--sky-orb) 38%, transparent); }
+.sky-stars { inset: 0 0 40% 0; opacity: 0; background-image:
+  radial-gradient(1.3px 1.3px at 8% 30%, #fff 60%, #0000 62%), radial-gradient(1px 1px at 19% 14%, #fff 60%, #0000 62%), radial-gradient(1.4px 1.4px at 33% 46%, #fff 60%, #0000 62%),
+  radial-gradient(1px 1px at 46% 20%, #fff 60%, #0000 62%), radial-gradient(1.2px 1.2px at 58% 38%, #fff 60%, #0000 62%), radial-gradient(1px 1px at 69% 12%, #fff 60%, #0000 62%),
+  radial-gradient(1.3px 1.3px at 88% 34%, #fff 60%, #0000 62%), radial-gradient(1px 1px at 95% 16%, #fff 60%, #0000 62%); }
+:root[data-sky="night"] .sky-stars { opacity: calc(var(--sky-oo) * .85); }
+.sky-clouds { inset: 0; display: none !important; background:
+  radial-gradient(ellipse 130px 24px at 16% 36%, rgba(255, 255, 255, .2) 60%, #0000 62%), radial-gradient(ellipse 84px 22px at 21% 27%, rgba(255, 255, 255, .2) 60%, #0000 62%),
+  radial-gradient(ellipse 160px 28px at 66% 46%, rgba(255, 255, 255, .17) 60%, #0000 62%), radial-gradient(ellipse 96px 24px at 72% 35%, rgba(255, 255, 255, .17) 60%, #0000 62%); }
+:root:not([data-wx="clear"]):not([data-wx="fog"]) .sky-clouds { display: block !important; }
+.sky-fall { inset: 0 0 18% 0; display: none !important; -webkit-mask: linear-gradient(#0000 0, #000 34%); mask: linear-gradient(#0000 0, #000 34%); }
+:root[data-wx="rain"] .sky-fall, :root[data-wx="storm"] .sky-fall {
+  display: block !important; background-image: linear-gradient(100deg, #0000 45%, rgba(255, 255, 255, .34) 45% 52%, #0000 52%); background-size: 16px 40px;
+  animation: sky-rain .5s linear infinite; }
+:root[data-wx="snow"] .sky-fall {
+  display: block !important; background-image: radial-gradient(circle 1.7px at 7px 9px, #fff 96%, #0000), radial-gradient(circle 1.2px at 24px 31px, #fff 96%, #0000);
+  background-size: 34px 44px; animation: sky-snow 3s linear infinite; }
+@keyframes sky-rain { to { background-position: -8px 40px; } }
+@keyframes sky-snow { to { background-position: 10px 44px; } }
+:root[data-wx="fog"] .sky-scene::after { content: ''; position: absolute; inset: 30% 0 0 0; background: linear-gradient(#0000, rgba(255, 255, 255, .22)); }
+.sky-land { position: absolute; left: 0; right: 0; bottom: -1px; width: 100%; height: 46%; }
+.sky-land path { fill: var(--bg); }
+.sky-text { position: absolute; left: 16px; top: 13px; z-index: 2; font-size: var(--t-s); font-weight: 700; color: #fff; text-shadow: 0 1px 8px rgba(0, 0, 0, .5); }
+/* Заголовок стає на пагорб: сцена й «Зараз у Глечиках» — одне ціле. */
+@media (min-width: 901px) { .hm:not(.guest) .hm-top { position: relative; margin-top: -70px; padding: 0 6px; } }
+@media (max-width: 900px) { .sky-scene { height: 150px; } .sky-orb { width: 36px; height: 36px; margin: -18px 0 0 -18px; } }
+@media (prefers-reduced-motion: reduce) { .sky-fall { animation: none !important; } }
+
+/* ---- ▶ з колами: тихі кола стоять завжди, а поки ефір грає — розходяться, як по воді ---- */
+.bigplay.primary { box-shadow: 0 0 0 8px rgba(244, 197, 66, .13), 0 0 0 18px rgba(244, 197, 66, .06); }
+.now .bigplay.live, .hm-air .bigplay.live { animation: play-rings 2.4s linear infinite; }
+@keyframes play-rings {
+  0% { box-shadow: inset 0 0 0 1px var(--accent2), 0 0 0 0 rgba(244, 197, 66, .3), 0 0 0 10px rgba(244, 197, 66, .15), 0 0 0 22px rgba(244, 197, 66, .06); }
+  100% { box-shadow: inset 0 0 0 1px var(--accent2), 0 0 0 10px rgba(244, 197, 66, .15), 0 0 0 22px rgba(244, 197, 66, .06), 0 0 0 34px rgba(244, 197, 66, 0); }
+}
+@media (prefers-reduced-motion: reduce) { .now .bigplay.live, .hm-air .bigplay.live { animation: none; } }

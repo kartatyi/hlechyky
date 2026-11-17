@@ -28,6 +28,8 @@
     'gdot', // «грають зараз» у лобі ігор
     'sn-blink', // крапка «що нового» (static/stats-news.css)
     'recpulse', // запис голосу
+    'sky-rain', 'sky-snow', // дощ і сніг у сцені «Обрій» на головній (static/polyva.css)
+    'play-rings', // кола від ▶, поки ефір грає
   ]);
   const STEP_MS = 100;
   const list = new Set();

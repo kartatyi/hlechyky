@@ -158,12 +158,19 @@
     root = document.getElementById('home');
     if (!root || root.dataset.ready) return;
     root.dataset.ready = '1';
-    root.innerHTML = '<div data-hm="hero"></div>'
+    // «Обрій»: небо за справжнім часом і погодою (web/sky.js ставить кольори й підпис). Самих лише плям кольору досить —
+    // градієнт, сонце чи місяць, один пагорб; дощ і сніг — лише тут, і лише коли вони справді йдуть.
+    root.innerHTML = '<div class="sky-scene" aria-hidden="true"><i class="sky-stars"></i><i class="sky-orb"></i><i class="sky-clouds"></i><i class="sky-fall"></i>'
+      + '<svg class="sky-land" viewBox="0 0 1200 120" preserveAspectRatio="none"><path d="M0 38 C150 14 300 40 450 50 C620 10 800 18 960 46 C1050 30 1130 34 1200 22 V120 H0Z"/></svg>'
+      + '<span class="sky-text" data-sky-text hidden></span></div>'
+      + '<div data-hm="hero"></div>'
+
       + '<div class="hm-top"><h1 data-hm="h1">Зараз у Глечиках</h1><p class="hm-lead" data-hm="lead"></p></div>'
       + '<div class="hm-g2"><section class="panel hm-air" data-hm="air"></section><section class="panel hm-people" data-hm="people"></section></div>'
       + '<div class="hm-g3"><section class="panel" data-hm="tables"></section><section class="panel" data-hm="daily"></section><section class="panel hm-chat" data-hm="chat"></section></div>'
       + '<div class="hm-strip" data-hm="paper"></div>';
     root.addEventListener('click', onClick);
+    if (window.HSky) HSky.repaint();
   }
 
   function onClick(e) {

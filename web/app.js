@@ -5037,6 +5037,8 @@
   if (window.HSiteNews) HSiteNews.init({ esc, api, me, go, games: window.HGames });
   // 📜 Історія Глечиків (web/history.js): сторінка #history і версія сайту в «Я»
   if (window.HHistory) HHistory.init({ esc, go });
+  // 🌅 Небо (web/sky.js): кольори за справжнім часом і погодою — сцена на головній і смужка під шапкою
+  if (window.HSky) HSky.init({ api, oblast: () => (window.HTryvoga && HTryvoga.oblast ? HTryvoga.oblast() : '') });
   // 🏠 Головна (web/home.js): «Зараз у Глечиках» — усе живе на одній сторінці; дані бере звідси й із HGames
   if (window.HHome) HHome.init({ esc, go, api, me, fmt, cover, dj, askNick, trackPos,
     state: () => state, onAir: trackOnAir, chatTail: () => chatTail, paintPlay: setPlayUi,
@@ -5105,6 +5107,7 @@
     paintNight();
     ukaz();
     if (window.HSiteNews) HSiteNews.ready();
+    if (window.HSky) HSky.ready();
     if (window.HTryvoga) HTryvoga.ready();   // уже знаємо, чи це акаунт: його район головніший за браузерний
     loadGoogle(m.googleClientId);
     $('adsTab').hidden = me.role !== 'admin';
