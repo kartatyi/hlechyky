@@ -295,12 +295,24 @@ main { position: relative; z-index: 1; }
 /* сніг на деревах: латки на гілках ялин, шапки на кронах сосон, смужки на гілках листяних */
 .ld-snow-s { fill: none; stroke: var(--snow); stroke-width: .9; stroke-linecap: round; opacity: calc(var(--snow-o) * .8); }
 .ld-snow-s.ld-snow-w { stroke-width: 1.7; }
-/* далекий ліс на далеких берегах: дерева рядами, темніші за схил, низ кожного тане в тумані; нижчі ряди блідіші (прозорість — у малюнку) */
-.ld-l2t { fill: url(#ob-gft); filter: blur(.5px); }
-.ob-sft0 { stop-color: color-mix(in srgb, var(--l2b) 72%, var(--l2)); }
-.ob-sft1 { stop-color: color-mix(in srgb, var(--l2b) 72%, var(--l2)); stop-opacity: 0; }
+/* далекий ліс на далеких берегах: яруси крон від гребеня до води — верхівки світліші, під ними темно, низ тане (нижчі
+   яруси блідіші — прозорість у малюнку). Листяні — в барвах пори року; взимку, коли листя нема (--leaf-o → 0), ліс
+   голий: сіро-бурий, як гілля, і трохи прозоріший. Ялини темні цілий рік */
+.ld-l2t { filter: blur(.5px); }
+.ld-l2t path { fill: url(#ob-gff); opacity: calc(.72 + .28 * var(--leaf-o)); }
+.ld-l2t .ld-fe { fill: url(#ob-gfe); opacity: 1; }
+.ob-sff0 { stop-color: color-mix(in srgb, color-mix(in srgb, var(--leaf) 40%, var(--l2)) calc(var(--leaf-o) * 100%), color-mix(in srgb, var(--l3) 30%, var(--l2))); }
+.ob-sff1 { stop-color: color-mix(in srgb, color-mix(in srgb, var(--leaf) 62%, var(--l2)) calc(var(--leaf-o) * 100%), color-mix(in srgb, var(--l3) 50%, var(--l2))); }
+.ob-sff2 { stop-color: color-mix(in srgb, color-mix(in srgb, var(--leaf) 62%, var(--l2)) calc(var(--leaf-o) * 100%), color-mix(in srgb, var(--l3) 50%, var(--l2))); stop-opacity: .6; }
+.ob-sff3 { stop-color: color-mix(in srgb, color-mix(in srgb, var(--leaf) 62%, var(--l2)) calc(var(--leaf-o) * 100%), color-mix(in srgb, var(--l3) 50%, var(--l2))); stop-opacity: 0; }
+.ob-sfe0 { stop-color: color-mix(in srgb, var(--pine) 50%, var(--l2)); }
+.ob-sfe1 { stop-color: color-mix(in srgb, var(--pine) 70%, var(--l2)); }
+.ob-sfe2 { stop-color: color-mix(in srgb, var(--pine) 70%, var(--l2)); stop-opacity: 0; }
 .ld-birch { fill: var(--birch); }                                          /* берези: світлі стовбури */
 .ld-willow .ld-twig { stroke-width: .6; }                                  /* верба: узимку — тонкі батоги */
+.ld-crown.ld-wl { fill: url(#ob-gwl); }                                    /* передні каскади верби — світліші за задні */
+.ob-swl0 { stop-color: color-mix(in srgb, var(--leaf2) 80%, var(--mist)); }
+.ob-swl1 { stop-color: color-mix(in srgb, var(--leaf2) 93%, var(--mist)); }
 /* птахи: їх домальовує sky.js (товщина й прозорість кожної зграї — там); надвечір тьмяніють, уночі їх нема */
 .ld-birds { fill: none; stroke: var(--shd); stroke-linecap: round; stroke-linejoin: round; opacity: calc(.85 * (1 - var(--sky-lamp))); }
 .ob-fshd { flood-color: var(--shd); }                                      /* тінь лісистих схилів на воді (фільтр ob-frs) */
