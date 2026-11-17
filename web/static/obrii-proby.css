@@ -155,3 +155,50 @@
     radial-gradient(75% 70% at 50% 100%, var(--sk2), transparent 72%), var(--sk0); }
   .sky-art svg > :not(defs):not(.ld-l4):not(.ld-reed) { display: none; }
 }
+
+/* ---- гібриди з вибраного в раунді hlechyky-styli2 («як зараз», «туман», «силует» + небо зі «Сяйва») ---- */
+/* небо зі «Сяйва»: не рівний градієнт, а плями кольорів неба цієї миті; смуга світла лежить на обрії */
+:root:is([data-art="h1"], [data-art="h2"], [data-art="h3"], [data-art="h4"]) {
+  .sky-scene { background: linear-gradient(180deg, color-mix(in srgb, var(--bg) 62%, transparent) 0, transparent 120px),
+    radial-gradient(58% 80% at 14% 30%, var(--sk1), transparent 70%), radial-gradient(50% 75% at 86% 16%, color-mix(in srgb, var(--sk0), var(--tint)), transparent 70%),
+    radial-gradient(95% 46% at 50% 58%, var(--sk2), transparent 74%), var(--sk0); }
+}
+/* h2, h4 — туман: далеке розмите, туману більше */
+:root:is([data-art="h2"], [data-art="h4"]) {
+  .ld-l1 { filter: blur(5px); }
+  .ld-l2 { filter: blur(2.6px); }
+  .ld-br { filter: blur(.7px); }
+  .ld-rock { filter: blur(1.4px); }
+  .ld-mist { opacity: calc(var(--sky-mist) * var(--k, 1) * 1.7); }
+}
+:root[data-art="h2"] {
+  .ld-l2b { filter: blur(1.4px); }
+  .ld-rock2 { filter: blur(.8px); }
+}
+/* h3 — силует: уся земля темна */
+:root[data-art="h3"] {
+  --sky-halo: .8 !important;
+  .ld-l1 { fill: color-mix(in srgb, var(--bg) 46%, var(--sk1)); }
+  .ld-l2 { fill: color-mix(in srgb, var(--bg) 64%, var(--sk1)); }
+  .ld-l2b { fill: color-mix(in srgb, var(--bg) 79%, var(--sk1)); }
+  .ld-l3, .ld-tr3 { fill: color-mix(in srgb, var(--bg) 90%, var(--sk1)); }
+  .ld-pine, .ld-crown { fill: color-mix(in srgb, var(--bg) 85%, var(--sk1)); }
+  .ld-rock, .ld-rock2 { fill: color-mix(in srgb, var(--bg) 72%, var(--sk1)); }
+  .ld-br { fill: color-mix(in srgb, var(--bg) 58%, var(--sk1)); }
+  .ld-br-c, .ld-br-w { stroke: color-mix(in srgb, var(--bg) 58%, var(--sk1)); }
+  .ld-rock-l, .ld-rock2-l, .ld-ts-l, .ld-ts-r, .ld-fold, .ld-sh-l, .ld-sh-r { display: none; }
+  .ld-mist { opacity: calc(var(--sky-mist) * var(--k, 1) * 1.3); }
+}
+/* h4 — усе разом: далеке в тумані й кольорі неба, ближнє — темні силуети з тихим об'ємом */
+:root[data-art="h4"] {
+  --sky-halo: .7 !important;
+  .ld-l2b { fill: color-mix(in srgb, var(--bg) 74%, var(--sk1)); }
+  .ld-l3 { fill: color-mix(in srgb, var(--bg) 88%, var(--sk1)); }
+  .ld-tr3 { fill: color-mix(in srgb, var(--bg) 86%, var(--sk1)); }
+  .ld-pine { fill: color-mix(in srgb, var(--bg) 80%, var(--sk1)); }
+  .ld-crown { fill: color-mix(in srgb, var(--bg) 72%, var(--sk1)); }
+  .ld-rock2 { fill: color-mix(in srgb, var(--bg) 62%, var(--sk1)); }
+  .ld-rock2-l { opacity: .12; }
+  .ld-ts-l { opacity: calc(var(--sh-l) * .8); }
+  .ld-ts-r { opacity: calc(var(--sh-r) * .8); }
+}
