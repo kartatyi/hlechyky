@@ -134,20 +134,22 @@ header .memenu .badge { position: static; }
   --w0: #172a46; --w1: #0c1a20; --pad: #1a3c2b; --sky-orb: #ece8d6; --sky-halo: .16; --sky-oo: 1; --sky-stars: 1;
   --sky-cl: #37485f; --sky-cirrus: .22; --sky-deck: 0; --sky1: #0b1830; --sky2: #1c2f4f;
   --l1m: #1d3a3f; --lb: #152b2c; --l2m: #1a3337; --l3m: #10211b; --rock: #2c3a38; --rock-l: #4c5a55; --mist: #5d7477; --sky-mist: .5;
-  --tint: #2c5550; --sun-x: 30%; --sh-x: 6px; --shd: #050d0a; --sky-shd: .45; --shade: #04090a; --leaf: #1b3a2c; --pine: #16302a; --leaf-o: 1; --pad-o: 1; --fl-o: 1; --l3t: #132823; --l3tm: #1c3634; --sky-lamp: 1; --l2b: #12262a; --l2bm: #1b3438; --rock2: #2a3836; --rock2-l: #46544f;
+  --tint: #2c5550; --sun-x: 30%; --sh-x: 6px; --shd: #050d0a; --sky-shd: .45; --shade: #04090a; --sh-l: .25; --sh-r: .25; --leaf: #1b3a2c; --pine: #16302a; --leaf-o: 1; --pad-o: 1; --fl-o: 1; --l3t: #132823; --l3tm: #1c3634; --sky-lamp: 1; --l2b: #12262a; --l2bm: #1b3438; --rock2: #2a3836; --rock2-l: #46544f;
 
 }
 /* ---- фон сайту: не плаский зелений, а туман — дві великі м'які плями кольору неба (--tint міняється разом із
    пейзажем головної) і дрібне зерно, щоб фон не був «пластиковим». Низ лишається нашим темним зеленим. ---- */
-:root { --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .07 0'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)'/%3E%3C/svg%3E"); }
+:root { --paper: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='320'%3E%3Cfilter id='p' color-interpolation-filters='sRGB' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.014' numOctaves='3' seed='3' stitchTiles='stitch' result='a'/%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.75' numOctaves='3' seed='8' stitchTiles='stitch' result='b'/%3E%3CfeComposite in='a' in2='b' operator='arithmetic' k2='.5' k3='.5'/%3E%3CfeColorMatrix values='.2 .2 .2 0 .2 .2 .2 .2 0 .2 .2 .2 .2 0 .2 0 0 0 0 1'/%3E%3C/filter%3E%3Crect width='320' height='320' filter='url(%23p)'/%3E%3C/svg%3E"); }
 body { background: linear-gradient(180deg, var(--bg) 0, #0b1813 100%); }
 /* Туман не тікає разом зі сторінкою: шар стоїть на місці, а сторінка їде поверх нього. Світла пляма — з того боку,
    де зараз сонце (--sun-x), тож уранці вона ліворуч, увечері праворуч. Окремий шар — щоб прокрутка лишалась легкою. */
 body::before {
   content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none;
-  background: var(--grain),
+  background: var(--paper),
     radial-gradient(120vw 125vh at var(--sun-x) -14%, color-mix(in srgb, var(--tint) 30%, transparent) 0%, transparent 68%) no-repeat,
-    radial-gradient(110vw 105vh at calc(100% - var(--sun-x)) 112%, color-mix(in srgb, var(--tint) 16%, transparent) 0%, transparent 64%) no-repeat;
+    radial-gradient(110vw 105vh at calc(100% - var(--sun-x)) 112%, color-mix(in srgb, var(--tint) 16%, transparent) 0%, transparent 64%) no-repeat,
+    linear-gradient(180deg, var(--bg) 0, #0b1813 100%);
+  background-blend-mode: overlay, normal, normal, normal;   /* папір: плямистість і зерно поверх градієнтів */
 }
 /* ---- шапка — смужка неба: кольори неба цієї миті, сяйво там, де сонце, і тінь під нею. На головній, поки не
    прокрутили, її нема (там справжнє небо) — з'являється плавно, щойно сторінка поїхала. ---- */
@@ -165,12 +167,14 @@ body.route-home:not(.scrolled) header::before { opacity: 0; }
    (--sun-x; уночі — місяць), а м'яка тінь падає в інший бік (--sh-x). Без різких країв: блок не має бути «3D». ---- */
 section.panel, aside.panel {
   border: 1px solid transparent;
-  background: radial-gradient(85% 170px at var(--sun-x) 0, color-mix(in srgb, var(--tint) 13%, transparent) 0, transparent 100%) padding-box,
+  background: var(--paper) padding-box,
+    radial-gradient(85% 170px at var(--sun-x) 0, color-mix(in srgb, var(--tint) 13%, transparent) 0, transparent 100%) padding-box,
     linear-gradient(var(--panel), var(--panel)) padding-box,
     radial-gradient(62% 120% at var(--sun-x) 0, color-mix(in srgb, var(--tint) 46%, var(--line)) 0, var(--line) 100%) border-box;
   /* Тінь — акцент блока: м'яка, падає в бік від сонця. Вона не чисто чорна: довкола темного ядра — серпанок кольору
      неба над нами (--shade): удень синьо-зелений, на заході синій, уночі його майже нема. */
-  box-shadow: var(--sh-x) 20px 34px -20px rgba(0, 0, 0, .62), calc(var(--sh-x) * 1.4) 30px 64px -22px color-mix(in srgb, var(--shade) 62%, transparent);
+  background-blend-mode: overlay, normal, normal, normal;
+  box-shadow: var(--sh-x) 20px 34px -20px rgba(0, 0, 0, .55), calc(var(--sh-x) * 1.5) 32px 72px -18px color-mix(in srgb, var(--shade) 85%, transparent);
 }
 header .vswitch, header .mini, header .tools { border-color: color-mix(in srgb, var(--tint) 24%, var(--line)); box-shadow: var(--sh-x) 8px 16px -10px rgba(0, 0, 0, .55), var(--sh-x) 12px 26px -12px color-mix(in srgb, var(--shade) 55%, transparent); }
 /* Під шапкою — волосинка світла з того боку, де зараз сонце; на кожній сторінці. */
@@ -196,6 +200,8 @@ body.route-home .sky-scene { display: block; }
 body.route-home:not(.scrolled) header::after { display: none; }
 main { position: relative; z-index: 1; }
 .sky-scene > i { position: absolute; display: block; }
+/* паперова фактура поверх усього пейзажу: плямистість і зерно, щоб градієнти не були «пластиковими» */
+.sky-scene::after { content: ''; position: absolute; inset: 0; pointer-events: none; background: var(--paper); mix-blend-mode: overlay; opacity: .75; }
 .sky-halo {
   left: var(--ol, 70%); bottom: var(--ob, 70%); width: 620px; height: 620px; margin: 0 0 -310px -310px; border-radius: 50%;
   background: radial-gradient(circle, color-mix(in srgb, var(--sky-orb) calc(var(--sky-halo) * 100%), transparent) 0%,
@@ -245,6 +251,16 @@ main { position: relative; z-index: 1; }
 .ld-fl-c { fill: #a86a08; opacity: var(--fl-o); }
 .ld-fl-glow { fill: #f4c542; opacity: calc(var(--fl-o) * .16); }
 .ld-crown { fill: var(--leaf); opacity: var(--leaf-o); }
+/* об'єм: тіньовий бік дерев і скель, тіньовий бік схилів, складки рельєфу */
+.ld-ts-l { fill: var(--shd); opacity: var(--sh-l); }
+.ld-ts-r { fill: var(--shd); opacity: var(--sh-r); }
+.ld-ts-l.ld-cs { opacity: calc(var(--sh-l) * var(--leaf-o)); }
+.ld-ts-r.ld-cs { opacity: calc(var(--sh-r) * var(--leaf-o)); }
+.ld-sh-l { fill: url(#ob-gdl); opacity: var(--sh-l); }
+.ld-sh-r { fill: url(#ob-gdr); opacity: var(--sh-r); }
+.ld-fold { fill: var(--shd); opacity: .13; }
+.ob-sd1 { stop-color: var(--shd); stop-opacity: 1; }
+.ob-sd0 { stop-color: var(--shd); stop-opacity: 0; }
 .ld-pine { fill: var(--pine); }
 .ld-reed { stroke: var(--l4b); fill: var(--l4b); }
 .ob-s1 { stop-color: var(--l1); }

@@ -25,17 +25,33 @@ sub yR { my $x = shift; my $t = ss((1600 - $x) / 490); my $top = 264 + 8 * sin($
 my $bankL = smooth(@p) . ' V450 H-40 Z';
 @p = (); for (my $x = 1110; $x <= 2040; $x += 10) { push @p, [$x, yR($x)]; }
 my $bankR = smooth(@p) . ' V450 H1110 Z';
+my $reliefFar = fold(\&yL, -40, 900, 24, .4, 360) . fold(\&yL, -40, 900, 52, 2.1, 360) . fold(\&yR, 1110, 2040, 22, 1.3, 360) . fold(\&yR, 1110, 2040, 50, 3.0, 360)
+  . shade('ob-cbl', -40, 230, 940, 130) . shade('ob-cbr', 1110, 230, 930, 130);
 my $rock = q{M1284 358 L1290 336 L1302 327 L1310 311 L1330 303 L1352 301 L1364 291 L1392 293 L1404 305 L1420 307 L1432 331 L1440 358 Z};
 my $rockL = q{M1310 311 L1330 303 L1338 330 L1318 340 Z M1364 291 L1392 293 L1398 322 L1374 328 Z};
 
 # ---- ближчі схили: сосни й крони, які вже видно поодинці, і гранітна скеля на лівому березі — «гори поруч»
 sub yML { my $x = shift; my $t = ss(($x - 140) / 440); my $top = 300 + 7 * sin($x / 90 + .5); $top + (374 - $top) * $t }
 sub yMR { my $x = shift; my $t = ss((1880 - $x) / 420); my $top = 296 + 7 * sin($x / 80 + 1.7); $top + (374 - $top) * $t }
-sub pine { my ($x, $y, $h, $w, $cl) = @_; sprintf('<path' . ($cl ? qq{ class="$cl"} : '') . ' d="M%.1f %.1f L%.1f %.1f L%.1f %.1f L%.1f %.1f L%.1f %.1f L%.1f %.1f L%.1f %.1f L%.1f %.1f L%.1f %.1f L%.1f %.1f L%.1f %.1f Z"/>',
+sub pine0 { my ($x, $y, $h, $w, $cl) = @_; sprintf('<path' . ($cl ? qq{ class="$cl"} : '') . ' d="M%.1f %.1f L%.1f %.1f L%.1f %.1f L%.1f %.1f L%.1f %.1f L%.1f %.1f L%.1f %.1f L%.1f %.1f L%.1f %.1f L%.1f %.1f L%.1f %.1f Z"/>',
   $x, $y - $h, $x + $w * .32, $y - $h * .62, $x + $w * .14, $y - $h * .62, $x + $w * .42, $y - $h * .3, $x + $w * .2, $y - $h * .3, $x + $w * .5, $y,
   $x - $w * .5, $y, $x - $w * .2, $y - $h * .3, $x - $w * .42, $y - $h * .3, $x - $w * .14, $y - $h * .62, $x - $w * .32, $y - $h * .62) }
-sub crown { my ($x, $y, $h, $w) = @_; sprintf('<ellipse class="ld-crown" cx="%.1f" cy="%.1f" rx="%.1f" ry="%.1f"/><ellipse class="ld-crown" cx="%.1f" cy="%.1f" rx="%.1f" ry="%.1f"/>',
+sub crown0 { my ($x, $y, $h, $w) = @_; sprintf('<ellipse class="ld-crown" cx="%.1f" cy="%.1f" rx="%.1f" ry="%.1f"/><ellipse class="ld-crown" cx="%.1f" cy="%.1f" rx="%.1f" ry="%.1f"/>',
   $x, $y - $h * .55, $w * .75, $h * .5, $x + $w * .45, $y - $h * .36, $w * .55, $h * .34) }
+# Об'єм: у кожного дерева є тіньовий бік — права й ліва половини окремо; яку показати, вирішує сонце (sky.js: --sh-l, --sh-r).
+sub pine { my ($x, $y, $h, $w, $cl) = @_; my $o = pine0(@_);
+  for my $s (1, -1) { $o .= sprintf('<path class="%s" d="M%.1f %.1f L%.1f %.1f L%.1f %.1f L%.1f %.1f L%.1f %.1f L%.1f %.1f L%.1f %.1f Z"/>', $s > 0 ? 'ld-ts-r' : 'ld-ts-l',
+    $x, $y - $h, $x + $s * $w * .32, $y - $h * .62, $x + $s * $w * .14, $y - $h * .62, $x + $s * $w * .42, $y - $h * .3, $x + $s * $w * .2, $y - $h * .3, $x + $s * $w * .5, $y, $x, $y); }
+  $o }
+sub crown { my ($x, $y, $h, $w) = @_; my $o = crown0(@_);
+  for my $s (1, -1) { $o .= sprintf('<ellipse class="%s ld-cs" cx="%.1f" cy="%.1f" rx="%.1f" ry="%.1f"/>', $s > 0 ? 'ld-ts-r' : 'ld-ts-l', $x + $s * $w * .18, $y - $h * .5, $w * .54, $h * .42); }
+  $o }
+# Рельєф: усередині кожного берега — темніші складки (нижчі гребені), щоб берег не був пласкою плямою.
+sub fold { my ($f, $x0, $x1, $dy, $ph, $floor) = @_; my @q;
+  for (my $x = $x0; $x <= $x1; $x += 14) { my $y = $f->($x) + $dy + 8 * sin($x / 77 + $ph); push @q, [$x, $y > $floor ? $floor : $y]; }
+  '<path class="ld-fold" d="' . smooth(@q) . " V$floor H$x0 Z" . '"/>' }
+# Тіньовий бік схилу: дві накладки на кожен масив (тінь ліворуч / праворуч), обрізані за його обрисом.
+sub shade { my ($clip, $x, $y, $w, $h) = @_; join('', map { sprintf('<rect class="%s" clip-path="url(#%s)" x="%d" y="%d" width="%d" height="%d"/>', $_, $clip, $x, $y, $w, $h) } 'ld-sh-l', 'ld-sh-r') }
 srand(11);
 sub trees { my ($f, $x0, $x1, $tf, $skip) = @_; my $o = ''; my $x = $x0;
   while ($x < $x1) { my $t = $tf->($x); my $k = 1 - .45 * $t; my $y = $f->($x) + 3;
@@ -48,6 +64,7 @@ my $midL = smooth(@p) . ' V380 H-40 Z';
 @p = (); for (my $x = 1460; $x <= 2040; $x += 12) { push @p, [$x, yMR($x)]; }
 my $midR = smooth(@p) . ' V380 H1460 Z';
 my $midT = trees(\&yML, -30, 560, sub { ss(($_[0] - 140) / 440) }, [296, 486]) . trees(\&yMR, 1480, 2030, sub { ss((1880 - $_[0]) / 420) });
+my $reliefMid = fold(\&yML, -40, 580, 20, .9, 380) . fold(\&yMR, 1460, 2040, 20, 2.4, 380) . shade('ob-cml', -40, 280, 620, 100) . shade('ob-cmr', 1460, 280, 580, 100);
 my $rock2 = 'M290 380 L298 352 L316 341 L322 318 L348 305 L370 309 L392 296 L420 300 L434 319 L460 326 L470 350 L486 380 Z';
 my $rock2L = 'M322 318 L348 305 L358 336 L332 347 Z M392 296 L420 300 L425 331 L400 336 Z M434 319 L460 326 L462 352 L444 356 Z';
 my $rock2T = pine(336, 308, 24, 11, 'ld-pine') . pine(378, 306, 30, 13, 'ld-pine') . crown(408, 300, 22, 12) . pine(446, 324, 22, 10, 'ld-pine');
@@ -133,6 +150,10 @@ my $svg = <<"SVG";
     <linearGradient id="ob-gw" gradientUnits="userSpaceOnUse" x1="0" y1="356" x2="0" y2="470"><stop offset="0" class="ob-sw0"/><stop offset="1" class="ob-sw1"/></linearGradient>
     <linearGradient id="ob-gm" x1="0" y1="0" x2="0" y2="1"><stop offset="0" class="ob-sm0"/><stop offset=".55" class="ob-sm1"/><stop offset="1" class="ob-sm0"/></linearGradient>
     <clipPath id="ob-cw"><rect x="-40" y="356" width="2080" height="120"/></clipPath>
+    <clipPath id="ob-cbl"><path d="$bankL"/></clipPath><clipPath id="ob-cbr"><path d="$bankR"/></clipPath>
+    <clipPath id="ob-cml"><path d="$midL"/></clipPath><clipPath id="ob-cmr"><path d="$midR"/></clipPath>
+    <linearGradient id="ob-gdl"><stop offset="0" class="ob-sd1"/><stop offset=".8" class="ob-sd0"/></linearGradient>
+    <linearGradient id="ob-gdr"><stop offset=".2" class="ob-sd0"/><stop offset="1" class="ob-sd1"/></linearGradient>
     <radialGradient id="ob-gr" cx=".5" cy="0" r="1"><stop offset="0" class="ob-sr0"/><stop offset="1" class="ob-sr1"/></radialGradient>
   </defs>
   <g class="ld-stars">$stars</g>
@@ -142,17 +163,17 @@ my $svg = <<"SVG";
   <rect class="ld-mist" style="--k:.8" x="-40" y="286" width="2080" height="84"/>
   <g class="ld-br">$br</g>
   <g class="ld-lamp">$lamp</g>
-  <g class="ld-l2" filter="url(#ob-org)"><path d="$bankL"/><path d="$bankR"/></g>
-  <g><path class="ld-rock" d="$rock"/><path class="ld-rock-l" d="$rockL"/></g>
+  <g class="ld-l2" filter="url(#ob-org)"><path d="$bankL"/><path d="$bankR"/>$reliefFar</g>
+  <g><path class="ld-rock" d="$rock"/><path class="ld-rock-l" d="$rockL"/><path class="ld-ts-l" d="M1284 358 L1290 336 L1302 327 L1310 311 L1318 340 L1300 358 Z"/><path class="ld-ts-r" d="M1404 305 L1420 307 L1432 331 L1440 358 L1412 358 Z"/></g>
   <rect class="ld-water" x="-40" y="356" width="2080" height="120"/>
   <g class="ld-shd" clip-path="url(#ob-cw)"><g filter="url(#ob-fr)" data-shd="356" transform="matrix(1 0 0 -.6 0 569.6)"><path d="$bankL"/><path d="$bankR"/><path d="$rock"/>$brS</g></g>
   <g clip-path="url(#ob-cw)"><ellipse class="ld-refl" cx="0" cy="356" rx="62" ry="50"/></g>
   <g class="ld-mist" style="--k:.9" filter="url(#ob-b1)"><ellipse cx="1000" cy="354" rx="560" ry="13"/><ellipse cx="330" cy="346" rx="330" ry="11"/><ellipse cx="1680" cy="348" rx="340" ry="11"/></g>
   <path class="ld-glint" d="$glint"/>
   <g class="ld-st">$st</g>
-  <g class="ld-l2b" filter="url(#ob-org)"><path d="$midL"/><path d="$midR"/>$midT$rock2T</g>
+  <g class="ld-l2b" filter="url(#ob-org)"><path d="$midL"/><path d="$midR"/>$reliefMid$midT$rock2T</g>
   <g class="ld-shd" clip-path="url(#ob-cw)"><g filter="url(#ob-fr)" data-shd="380" transform="matrix(1 0 0 -.6 0 608)"><path d="$midL"/><path d="$midR"/>$midT</g></g>
-  <g><path class="ld-rock2" d="$rock2"/><path class="ld-rock2-l" d="$rock2L"/></g>
+  <g><path class="ld-rock2" d="$rock2"/><path class="ld-rock2-l" d="$rock2L"/><path class="ld-ts-l" d="M290 380 L298 352 L316 341 L322 318 L332 347 L318 380 Z"/><path class="ld-ts-r" d="M434 319 L460 326 L470 350 L486 380 L452 380 L444 356 Z"/></g>
   <g class="ld-mist" style="--k:.5" filter="url(#ob-b1)"><ellipse cx="250" cy="378" rx="330" ry="9"/><ellipse cx="1760" cy="378" rx="320" ry="9"/></g>
   <g>$l</g>
   <g class="ld-l3" filter="url(#ob-org)"><path d="$nearL"/><path d="$nearR"/></g>

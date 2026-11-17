@@ -64,9 +64,9 @@
   /// нашого жовтого. mist — скільки туману лежить між шарами (уранці й увечері більше, опівдні менше, але є завжди).
   const PAL = {
     night: { sk: ['#06100f', '#0c1d24', '#1d3a3f'], g: '#0d1c16', orb: '#ece8d6', halo: 0.16, stars: 1, mist: 0.5 },
-    dawn: { sk: ['#22384e', '#8a8098', '#f3c9a0'], g: '#24443a', orb: '#ffe2b4', halo: 0.5, stars: 0.15, mist: 1 },
-    day: { sk: ['#3f8aa0', '#93c4cc', '#e3efe0'], g: '#3a7355', orb: '#fff7d6', halo: 0.42, stars: 0, mist: 0.7 },
-    dusk: { sk: ['#182a44', '#85546f', '#f4b05e'], g: '#203a30', orb: '#ffc37a', halo: 0.55, stars: 0.1, mist: 0.9 },
+    dawn: { sk: ['#1c3048', '#7d7391', '#eab98c'], g: '#24443a', orb: '#ffe2b4', halo: 0.5, stars: 0.15, mist: 1 },
+    day: { sk: ['#2b7d9c', '#63b3c2', '#b7e0d2'], g: '#3a7355', orb: '#fff7d6', halo: 0.42, stars: 0, mist: 0.7 },
+    dusk: { sk: ['#14243f', '#7a4a6a', '#e99a4c'], g: '#203a30', orb: '#ffc37a', halo: 0.55, stars: 0.1, mist: 0.9 },
   };
   const P = {};
   for (const k of Object.keys(PAL)) P[k] = { sk: PAL[k].sk.map(hex), g: hex(PAL[k].g), orb: hex(PAL[k].orb), halo: PAL[k].halo, stars: PAL[k].stars, mist: PAL[k].mist };
@@ -111,7 +111,9 @@
     const grey = [mix(hex('#141a22'), hex('#59646e'), t), mix(hex('#1c232b'), hex('#7f8b92'), t), mix(hex('#262e36'), hex('#a9b3b6'), t)];
     // Кольори неба лишаємо повними (схід і захід мають бути гарні); крапля нашого зеленого лише в'яже їх зі сторінкою.
     const dim = 0.05;
-    const sk = c.sk.map((x, i) => mix(mix(x, grey[i], cover), BG, dim));
+    // У нас темна тема: небо притемнюємо множенням (колір лишається насиченим, а не сіріє) — удень найбільше.
+    const lum = 0.9 - 0.2 * t;
+    const sk = c.sk.map((x, i) => mix(mix(x, grey[i], cover), BG, dim).map((v) => Math.round(v * lum)));
     const g0 = mix(c.g, mix(c.g, hex('#222b2a'), 0.5), cover);
     // Пора року йде плавно: середина зими — 15 січня, весни — 15 квітня, літа — 15 липня, осені — 15 жовтня.
     const mo = at.getMonth() + at.getDate() / 31;
@@ -124,12 +126,13 @@
     const ice = clamp((wWin - 0.45) * 2.2, 0, 1);            // серед зими річка під льодом — світліша й без блиску
     const l4 = mix(g, BG, 0.74);
     // Туман — колір обрію, розбілений; у «туман» за погодою його вдвічі більше.
-    const mist = mix(sk[2], hex('#ffffff'), 0.2 + 0.16 * t);
+    const mist = mix(sk[2], hex('#ffffff'), 0.1 + 0.1 * t);
 
     const l1 = mix(sk[2], g, 0.24), l2 = mix(sk[2], g, 0.54), l2b = mix(sk[2], g, 0.76), l3 = mix(mix(g, BG, 0.34), sk[2], 0.1);
     const l3e = mix(mix(gE, BG, 0.34), sk[2], 0.1);
 
     pos = { alt: s.alt, ha: s.ha, top: s.top, day: s.alt > -4 };
+    const sinE = Math.sin(pos.day ? s.ha : s.ha - Math.PI);   // де світило: −1 — ліворуч, +1 — праворуч
     return {
       phase, kind: k,
       vars: {
@@ -155,12 +158,14 @@
         // тіні на воді: темні, а в хмарну погоду слабші (сонця нема — нема й тіні)
         // Тінь бере колір неба над нею: удень синьо-зелена, на заході синя, вночі майже чорна.
         '--shd': css(mix(mix(sk[0], g, 0.3), hex('#020806'), 0.6)), '--sky-shd': ((1 - cover) * 0.5 + 0.1).toFixed(2),
-        '--shade': css(mix(mix(c.sk[0], grey[0], cover), hex('#020504'), 0.5)),
-        // пора року: листя крон (взимку дерева голі), латаття (є з весни до осені), жовті квіти (цвітуть улітку)
+        '--shade': css(mix(mix(c.sk[0], grey[0], cover), hex('#020504'), 0.36)),
+        // об'єм: тіньовий бік дерев, схилів і скель — з боку, протилежного сонцю; у хмарну погоду майже зникає
+        '--sh-l': (clamp(0.5 + sinE * 2, 0, 1) * 0.5 * (1 - cover * 0.7)).toFixed(2),
+        '--sh-r': (clamp(0.5 - sinE * 2, 0, 1) * 0.5 * (1 - cover * 0.7)).toFixed(2),
+        // пора року: листя крон (взимку дерева голі), латаття й жовті глечики — наш знак, тож є завжди, крім зими (грудень — лютий)
         '--leaf': css(mix(sk[2], tone(g0, season(LEAF)), 0.76)), '--leaf-o': (1 - 0.72 * wWin).toFixed(2),
         '--pine': css(mix(sk[2], gE, 0.8)),
-        '--pad-o': clamp((wSum + wSpr * 0.7 + wAut * 0.6 - wWin) * 1.7, 0, 1).toFixed(2),
-        '--fl-o': clamp((wSum + wSpr * 0.5 + wAut * 0.35) * 1.6 - 0.2, 0, 1).toFixed(2),
+        '--pad-o': clamp((0.62 - wWin) * 5, 0, 1).toFixed(2), '--fl-o': clamp((0.62 - wWin) * 5, 0, 1).toFixed(2),
         '--tint': css(mix(mix(c.sk[2], grey[2], cover), g, 0.12)),
         '--w0': css(mix(mix(sk[2], sk[1], 0.3), mix(sk[2], hex('#ffffff'), 0.3), ice * 0.6)),
         '--w1': css(mix(mix(sk[1], g, 0.62), mix(sk[1], hex('#dfe8ea'), 0.35), ice * 0.55)),
