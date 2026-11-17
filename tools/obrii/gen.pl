@@ -116,16 +116,13 @@ my $svg = <<"SVG";
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 90 2000 470" preserveAspectRatio="xMidYMax slice">
   <!-- «Обрій»: Тетерів у Житомирі на головній (web/sky.js ставить кольори змінними, static/polyva.css розкладає їх по шарах).
        Згори вниз: зорі, хмари, далекі пагорби, підвісний пішохідний міст, лісисті береги каньйону з гранітною скелею,
-       вода з камінням і лататтям, ближні береги, передній план з очеретом. Усе далеке розмите й тоне в тумані —
-       чіткий лише передній план. Геометрію згенеровано скриптом, руками не правити. -->
+       вода з камінням і лататтям, ближні береги, передній план з очеретом. Далеке не розмите, а тихе: мало контрасту, нерівні «живі» краї (зсув шумом)
+       й туман між шарами; чіткий і темний лише передній план. На воді — тіні берегів, дерев і моста: sky.js
+       нахиляє й видовжує їх за сонцем (data-shd — рівень води, від якого падає тінь). Геометрію згенеровано скриптом, руками не правити. -->
   <defs>
     <filter id="ob-b1" x="-20%" y="-200%" width="140%" height="500%"><feGaussianBlur stdDeviation="14 5"/></filter>
     <filter id="ob-b2" x="-20%" y="-100%" width="140%" height="300%"><feGaussianBlur stdDeviation="34 16"/></filter>
-    <filter id="ob-f1" filterUnits="userSpaceOnUse" x="-60" y="60" width="2120" height="520"><feGaussianBlur stdDeviation="4.5"/></filter>
-    <filter id="ob-f2" filterUnits="userSpaceOnUse" x="-60" y="60" width="2120" height="520"><feGaussianBlur stdDeviation="2.2"/></filter>
-    <filter id="ob-f3" filterUnits="userSpaceOnUse" x="-60" y="60" width="2120" height="520"><feGaussianBlur stdDeviation="1.1"/></filter>
-    <filter id="ob-fb" filterUnits="userSpaceOnUse" x="-60" y="60" width="2120" height="520"><feGaussianBlur stdDeviation=".55"/></filter>
-    <filter id="ob-f4" filterUnits="userSpaceOnUse" x="-60" y="60" width="2120" height="520"><feGaussianBlur stdDeviation="1.7"/></filter>
+    <filter id="ob-org" filterUnits="userSpaceOnUse" x="-60" y="60" width="2120" height="520"><feTurbulence type="fractalNoise" baseFrequency=".045 .07" numOctaves="2" seed="4" result="n"/><feDisplacementMap in="SourceGraphic" in2="n" scale="6" xChannelSelector="R" yChannelSelector="G"/></filter>
     <filter id="ob-fr" filterUnits="userSpaceOnUse" x="-60" y="60" width="2120" height="520"><feGaussianBlur stdDeviation="5 2.4"/></filter>
     <linearGradient id="ob-g1" gradientUnits="userSpaceOnUse" x1="0" y1="300" x2="0" y2="352"><stop offset="0" class="ob-s1"/><stop offset="1" class="ob-s1m"/></linearGradient>
     <linearGradient id="ob-g2" gradientUnits="userSpaceOnUse" x1="0" y1="244" x2="0" y2="360"><stop offset="0" class="ob-s2"/><stop offset="1" class="ob-s2m"/></linearGradient>
@@ -141,26 +138,25 @@ my $svg = <<"SVG";
   <g class="ld-stars">$stars</g>
   <g class="ld-cirrus" filter="url(#ob-b1)"><ellipse cx="430" cy="232" rx="360" ry="9"/><ellipse cx="1380" cy="206" rx="430" ry="11"/><ellipse cx="1010" cy="250" rx="250" ry="6"/></g>
   <g class="ld-deck" filter="url(#ob-b2)"><ellipse cx="300" cy="126" rx="520" ry="58"/><ellipse cx="1050" cy="104" rx="620" ry="64"/><ellipse cx="1760" cy="140" rx="480" ry="56"/><ellipse cx="700" cy="196" rx="420" ry="34"/><ellipse cx="1480" cy="212" rx="460" ry="30"/></g>
-  <path class="ld-l1" filter="url(#ob-f1)" d="$far"/>
+  <path class="ld-l1" d="$far"/>
   <rect class="ld-mist" style="--k:.8" x="-40" y="286" width="2080" height="84"/>
-  <g class="ld-br" filter="url(#ob-fb)">$br</g>
+  <g class="ld-br">$br</g>
   <g class="ld-lamp">$lamp</g>
-  <g class="ld-l2" filter="url(#ob-f2)"><path d="$bankL"/><path d="$bankR"/></g>
-  <g filter="url(#ob-f3)"><path class="ld-rock" d="$rock"/><path class="ld-rock-l" d="$rockL"/></g>
+  <g class="ld-l2" filter="url(#ob-org)"><path d="$bankL"/><path d="$bankR"/></g>
+  <g><path class="ld-rock" d="$rock"/><path class="ld-rock-l" d="$rockL"/></g>
   <rect class="ld-water" x="-40" y="356" width="2080" height="120"/>
-  <g class="ld-l2r" clip-path="url(#ob-cw)"><g filter="url(#ob-fr)" transform="matrix(1 0 0 -.42 0 505.5)"><path d="$bankL"/><path d="$bankR"/><path d="$rock"/></g></g>
-  <g class="ld-brr" clip-path="url(#ob-cw)"><g filter="url(#ob-fr)" transform="matrix(1 0 0 -.45 0 516.2)">$brS</g></g>
+  <g class="ld-shd" clip-path="url(#ob-cw)"><g filter="url(#ob-fr)" data-shd="356" transform="matrix(1 0 0 -.6 0 569.6)"><path d="$bankL"/><path d="$bankR"/><path d="$rock"/>$brS</g></g>
   <g clip-path="url(#ob-cw)"><ellipse class="ld-refl" cx="0" cy="356" rx="62" ry="50"/></g>
   <g class="ld-mist" style="--k:.9" filter="url(#ob-b1)"><ellipse cx="1000" cy="354" rx="560" ry="13"/><ellipse cx="330" cy="346" rx="330" ry="11"/><ellipse cx="1680" cy="348" rx="340" ry="11"/></g>
   <path class="ld-glint" d="$glint"/>
-  <g class="ld-st" filter="url(#ob-f3)">$st</g>
-  <g class="ld-l2b" filter="url(#ob-f2)"><path d="$midL"/><path d="$midR"/>$midT$rock2T</g>
-  <g class="ld-l2br" clip-path="url(#ob-cw)"><g filter="url(#ob-fr)" transform="matrix(1 0 0 -.5 0 570)"><path d="$midL"/><path d="$midR"/>$midT</g></g>
-  <g filter="url(#ob-f3)"><path class="ld-rock2" d="$rock2"/><path class="ld-rock2-l" d="$rock2L"/></g>
+  <g class="ld-st">$st</g>
+  <g class="ld-l2b" filter="url(#ob-org)"><path d="$midL"/><path d="$midR"/>$midT$rock2T</g>
+  <g class="ld-shd" clip-path="url(#ob-cw)"><g filter="url(#ob-fr)" data-shd="380" transform="matrix(1 0 0 -.6 0 608)"><path d="$midL"/><path d="$midR"/>$midT</g></g>
+  <g><path class="ld-rock2" d="$rock2"/><path class="ld-rock2-l" d="$rock2L"/></g>
   <g class="ld-mist" style="--k:.5" filter="url(#ob-b1)"><ellipse cx="250" cy="378" rx="330" ry="9"/><ellipse cx="1760" cy="378" rx="320" ry="9"/></g>
   <g>$l</g>
-  <g class="ld-l3" filter="url(#ob-f3)"><path d="$nearL"/><path d="$nearR"/></g>
-  <g class="ld-tr3" filter="url(#ob-f4)">$nearT</g>
+  <g class="ld-l3" filter="url(#ob-org)"><path d="$nearL"/><path d="$nearR"/></g>
+  <g class="ld-tr3" filter="url(#ob-org)">$nearT</g>
   <rect class="ld-mist" style="--k:.45" x="-40" y="396" width="2080" height="70"/>
   <path class="ld-l4" d="$fore"/>
   <g class="ld-reed ld-reed-a">$reedA</g>

@@ -111,7 +111,7 @@
     // Туман — колір обрію, розбілений; у «туман» за погодою його вдвічі більше.
     const mist = mix(sk[2], hex('#ffffff'), 0.2 + 0.16 * t);
 
-    const l1 = mix(sk[2], g, 0.3), l2 = mix(sk[2], g, 0.7), l2b = mix(sk[2], g, 0.9), l3 = mix(mix(g, BG, 0.34), sk[2], 0.1);
+    const l1 = mix(sk[2], g, 0.24), l2 = mix(sk[2], g, 0.54), l2b = mix(sk[2], g, 0.76), l3 = mix(mix(g, BG, 0.34), sk[2], 0.1);
 
     pos = { alt: s.alt, ha: s.ha, top: s.top, day: s.alt > -4 };
     return {
@@ -133,9 +133,11 @@
         // спільний колір сторінки: колір обрію цієї миті — ним підсвічено рамки й блоки по всьому сайту
         // звідки падає світло на блоки: сонце (вночі місяць) іде зліва направо — відблиск на блоках іде за ним
         '--sun-x': Math.round(50 + 42 * Math.sin(s.alt > -4 ? s.ha : s.ha - Math.PI)) + '%',
-        '--sh-x': Math.round(-12 * Math.sin(s.alt > -4 ? s.ha : s.ha - Math.PI)) + 'px',
+        '--sh-x': Math.round(-18 * Math.sin(s.alt > -4 ? s.ha : s.ha - Math.PI)) + 'px',
         // ближні сосни: не чорні силуети, а в тому ж серпанку, що й усе
-        '--l3t': css(mix(l3, sk[2], 0.24)), '--l3tm': css(mix(mix(l3, sk[2], 0.24), mist, 0.4)),
+        '--l3t': css(mix(l3, sk[2], 0.3)), '--l3tm': css(mix(mix(l3, sk[2], 0.3), mist, 0.45)),
+        // тіні на воді: темні, а в хмарну погоду слабші (сонця нема — нема й тіні)
+        '--shd': css(mix(mix(sk[1], g, 0.62), hex('#020806'), 0.66)), '--sky-shd': ((1 - cover) * 0.5 + 0.1).toFixed(2),
         '--tint': css(mix(mix(c.sk[2], grey[2], cover), g, 0.12)),
         '--w0': css(mix(sk[2], sk[1], 0.3)), '--w1': css(mix(sk[1], g, 0.62)),
         '--pad': css(mix(g, hex('#3f9e68'), 0.25 + 0.25 * t)),
@@ -181,6 +183,13 @@
     const up = alt >= 0 ? (alt / Math.max(12, pos.top || 40)) * room : alt * 3.3 * s;
     el.style.setProperty('--ob', Math.min(H - hdr - 36, horizon + up).toFixed(1) + 'px');
     el.style.setProperty('--rx', xu.toFixed(1));
+    // Тіні на воді падають у бік від світила; що нижче воно стоїть, то вони довші.
+    const lean = (-34 * Math.sin(ha)).toFixed(1);
+    const long = (0.5 + 0.45 * (1 - clamp(alt / Math.max(12, pos.top || 40), 0, 1))).toFixed(2);
+    el.querySelectorAll('[data-shd]').forEach((sh) => {
+      const y = sh.dataset.shd;
+      sh.setAttribute('transform', 'translate(0 ' + y + ') skewX(' + lean + ') scale(1 -' + long + ') translate(0 -' + y + ')');
+    });
   }
 
   let last = '';
