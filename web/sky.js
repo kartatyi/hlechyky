@@ -6,7 +6,7 @@
 // пагорби, підвісний міст, береги каньйону, вода з відблиском; усе далеке тоне в тумані, чіткий лише очерет спереду.
 // Колір обрію (--tint) і бік, звідки світить сонце (--sun-x, --sh-x), беруть фон і блоки всього сайту. Звідси йдуть лише змінні на <html> — кольори
 // (--sk0…--sk2, --l1…--l4 і їхні «…m» у тумані, --lb міст, --rock, --w0, --w1, --pad, --mist), скільки туману
-// (--sky-mist), ліхтарі на мосту (--sky-lamp), світило (--sky-orb, --sky-halo, --sky-oo), зорі й хмари
+// (--sky-mist), ліхтарі на мосту (--sky-lamp), світила (--sky-orb, --sun-c, --moon-c, --sky-halo, --sky-oo…; місяць — зі справжньою фазою), зорі й хмари
 // (--sky-stars; самі хмари, дощ і сніг генеруються тут же — див. clouds() і fall()) — і два атрибути:
 // data-sky (night | dawn | day | dusk) та data-wx (clear | cloud | fog | rain | snow | storm). Перераховуємо раз на
 // п'ять хвилин і коли вкладка вертається; кольори не анімуються зовсім.
@@ -16,32 +16,41 @@
   let wx = null;                 // остання відповідь /api/weather або null
   let wxAt = 0;
   let fake = null;               // перегляд: { at: Date | null, wx: 'rain' | … } — з адреси ?sky=06:10&wx=rain&day=01-15 (місяць-день) або HSky.preview()
-  let pos = { alt: 0, ha: 0, day: true };
+  let pos = null;                // де зараз сонце й місяць і що з них світить — рахує compute(), розставляє place()
   const KYIV = { lat: 50.45, lon: 30.52 };
   const RAD = Math.PI / 180;
   // Пейзаж намальовано в цих одиницях (viewBox 0 90 2000 470); гребінь далеких пагорбів — на 236 одиниць вище за низ.
   const ART_W = 2000, ART_H = 470, HORIZON = 236;
 
   // ---------------------------------------------------------------------------------------------
-  // де сонце
+  // де сонце й місяць
   // ---------------------------------------------------------------------------------------------
 
-  /// Висота сонця над обрієм (градуси) й часовий кут (радіани, від'ємний — до полудня). Спрощена формула з
-  /// астрономічного альманаху: похибка до градуса, для кольору неба — із запасом.
-  function sun(date, lat, lon) {
+  /// Сонце й місяць: висота над обрієм (градуси), часовий кут (радіани, від'ємний — до кульмінації) і top — найвища
+  /// точка, куди світило сьогодні підніметься. Формули спрощені: сонце — з похибкою до градуса; місяць — середній рух
+  /// уздовж екліптики (без нахилу орбіти й нерівностей): похибка до кількох градусів і до години в часі сходу, для
+  /// картинки досить. Фаза місяця — за синодичним місяцем від відомого молодика: k — освітлена частка, wax — росте.
+  function sky(date, lat, lon) {
     const d = (date.getTime() - Date.UTC(2000, 0, 1, 12)) / 864e5;
     const L = (280.46 + 0.9856474 * d) % 360;
     const g = ((357.528 + 0.9856003 * d) % 360) * RAD;
     const lam = (L + 1.915 * Math.sin(g) + 0.02 * Math.sin(2 * g)) * RAD;
     const eps = (23.439 - 0.0000004 * d) * RAD;
-    const ra = Math.atan2(Math.cos(eps) * Math.sin(lam), Math.cos(lam));
-    const dec = Math.asin(Math.sin(eps) * Math.sin(lam));
     const gmst = (18.697374558 + 24.06570982441908 * d) % 24;
-    let ha = (gmst * 15 + lon) * RAD - ra;
-    ha = Math.atan2(Math.sin(ha), Math.cos(ha));
-    const alt = Math.asin(Math.sin(lat * RAD) * Math.sin(dec) + Math.cos(lat * RAD) * Math.cos(dec) * Math.cos(ha));
-    // top — найвища точка, куди сонце сьогодні підніметься (у полудень): від неї рахуємо, наскільки високо воно на сцені
-    return { alt: alt / RAD, ha, top: 90 - Math.abs(lat - dec / RAD) };
+    const body = (l) => {
+      const ra = Math.atan2(Math.cos(eps) * Math.sin(l), Math.cos(l)), dec = Math.asin(Math.sin(eps) * Math.sin(l));
+      let ha = (gmst * 15 + lon) * RAD - ra;
+      ha = Math.atan2(Math.sin(ha), Math.cos(ha));
+      const alt = Math.asin(Math.sin(lat * RAD) * Math.sin(dec) + Math.cos(lat * RAD) * Math.cos(dec) * Math.cos(ha));
+      return { alt: alt / RAD, ha, top: 90 - Math.abs(lat - dec / RAD) };
+    };
+    const SYN = 29.530588853;
+    const age = ((((date.getTime() - Date.UTC(2000, 0, 6, 18, 14)) / 864e5) % SYN) + SYN) % SYN;   // днів від молодика
+    const el = (age / SYN) * 2 * Math.PI;                                                        // на скільки місяць відстав від сонця
+    const moon = body(lam + el);
+    moon.k = (1 - Math.cos(el)) / 2;
+    moon.wax = age < SYN / 2;
+    return { sun: body(lam), moon };
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -98,7 +107,7 @@
   function compute() {
     const at = (fake && fake.at) || new Date();
     const p = (wx && wx.lat != null) ? wx : KYIV;
-    const s = sun(at, p.lat, p.lon);
+    const sm = sky(at, p.lat, p.lon), s = sm.sun, m = sm.moon;
     const morning = s.ha < 0;
     // −10° і нижче — ніч; до +6° — сутінки (уранці персикові, увечері жовтогарячі з бузком); вище — день.
     const t = clamp((s.alt + 10) / 16, 0, 1);
@@ -135,16 +144,24 @@
     // Вибраний вигляд («усе разом»): далеке лишається в кольорах неба й тумані, а ближній план — темні силуети нашого
     // зеленого. Від пори року й світла в них лишається відтінок (seasonal), щоб осінь і зима читались і тут.
     const near = (green, seasonal, hint) => mix(mix(sk[1], BG, green), seasonal, hint);
-    const l2bN = near(0.74, l2b, 0.3), l3N = near(0.88, l3, 0.22), l3tN = mix(near(0.8, mix(l3e, sk[2], 0.3), 0.22), mist, 0.14);
-    const leafN = (pal) => near(0.6, mix(sk[2], tone(g0, season(pal)), 0.76), 0.8);
+    const l2bN = near(0.74, l2b, 0.3), l3N = near(0.88, l3, 0.22), l3tN = near(0.84, mix(l3e, sk[2], 0.3), 0.26);
+    const leafN = (pal) => near(0.66, mix(sk[2], tone(g0, season(pal)), 0.76), 0.2 + 0.5 * (wAut + wSpr * 0.5));   // улітку крони майже як ліс, восени й навесні — кольорові
     const rock2N = near(0.62, mix(l2b, mix(sk[2], hex('#b9a89a'), 0.5), 0.34), 0.08);
 
-    pos = { alt: s.alt, ha: s.ha, top: s.top, day: s.alt > -4 };
-    const orbC = mix(pos.day ? c.orb : P.night.orb, sk[2], 0.1);
-    const sinE = Math.sin(pos.day ? s.ha : s.ha - Math.PI);   // де світило: −1 — ліворуч, +1 — праворуч
+    // Що світить: удень сонце; вночі місяць, якщо він над обрієм (і то сильніше, що повніший); буває й безмісячна ніч.
+    const day = s.alt > -4, moonUp = m.alt > 0;
+    const lit = day ? s : moonUp ? m : null;
+    const litK = day ? 1 : moonUp ? 0.25 + 0.75 * m.k : 0;
+    pos = { sun: s, moon: m, lit, sumTop: 90 - Math.abs(p.lat - 23.44) };
+    const sunC = mix(mix(c.orb, hex('#eef3ff'), 0.3 * wWin), sk[2], 0.1);                                       // узимку сонце блідіше
+    const moonC = mix(mix(hex('#ece8d6'), hex('#ffd9a0'), clamp(1 - m.alt / 12, 0, 1) * 0.6), sk[2], 0.08);     // низько над обрієм місяць рудуватий
+    const orbC = day ? sunC : moonC;
+    const clearK = clamp(1 - cover * 1.05, 0, 1);
+    const sinE = lit ? Math.sin(lit.ha) : 0;                  // де світило: −1 — ліворуч, +1 — праворуч
     return {
       phase, kind: k, cloud, code: fake && fake.wx ? null : wx ? wx.code : null,
-      cl: mix(sk[2], hex('#ffffff'), 0.12 + 0.38 * t), cl2: mix(sk[1], hex('#0d1318'), wet ? 0.5 : 0.22), orb: orbC.join(','),
+      cl: mix(sk[2], hex('#ffffff'), 0.08 + 0.24 * t), cl2: mix(sk[1], hex('#0d1318'), wet ? 0.5 : 0.22),
+      moon: { k: m.k, wax: m.wax, ha: m.ha }, moonRgb: moonC,
       vars: {
         '--sk0': css(sk[0]), '--sk1': css(sk[1]), '--sk2': css(sk[2]),
         // далі від нас — ближче до кольору обрію (повітряна димка), ближче — до нашого зеленого; низ кожного шару
@@ -161,10 +178,10 @@
         '--mist': css(mist), '--sky-mist': Math.min(1, c.mist * (k === 'fog' ? 1.8 : wet ? 1.25 : 1)).toFixed(2),
         // спільний колір сторінки: колір обрію цієї миті — ним підсвічено рамки й блоки по всьому сайту
         // звідки падає світло на блоки: сонце (вночі місяць) іде зліва направо — відблиск на блоках іде за ним
-        '--sun-x': Math.round(50 + 42 * Math.sin(s.alt > -4 ? s.ha : s.ha - Math.PI)) + '%',
-        '--sh-x': Math.round(-18 * Math.sin(s.alt > -4 ? s.ha : s.ha - Math.PI)) + 'px',
+        '--sun-x': Math.round(50 + 42 * sinE) + '%',
+        '--sh-x': Math.round(-18 * sinE) + 'px',
         // ближні сосни: не чорні силуети, а в тому ж серпанку, що й усе
-        '--l3t': css(l3tN), '--l3tm': css(mix(l3tN, mist, 0.24)),
+        '--l3t': css(l3tN), '--l3tm': css(l3N),
         // тіні на воді: темні, а в хмарну погоду слабші (сонця нема — нема й тіні)
         // Тінь бере колір неба над нею: удень синьо-зелена, на заході синя, вночі майже чорна.
         '--shd': css(mix(mix(sk[0], g, 0.3), hex('#020806'), 0.6)), '--sky-shd': ((1 - cover) * 0.5 + 0.1).toFixed(2),
@@ -173,20 +190,26 @@
         '--sh-l': (clamp(0.5 + sinE * 2, 0, 1) * 0.3 * (1 - cover * 0.7)).toFixed(2),
         '--sh-r': (clamp(0.5 - sinE * 2, 0, 1) * 0.3 * (1 - cover * 0.7)).toFixed(2),
         // пора року: листя крон (взимку дерева голі), латаття й жовті глечики — наш знак, тож є завжди, крім зими (грудень — лютий)
-        '--leaf': css(leafN(LEAF)), '--leaf2': css(leafN(LEAF2)), '--leaf3': css(leafN(LEAF3)), '--leaf-o': (1 - 0.72 * wWin).toFixed(2),
+        '--leaf': css(leafN(LEAF)), '--leaf2': css(leafN(LEAF2)), '--leaf3': css(leafN(LEAF3)), '--leaf-o': clamp(1 - 1.25 * wWin, 0, 1).toFixed(2),
         // сніг лежить серед зими, цвіт — у розпал весни, опале листя на воді — у розпал осені
         '--snow': css(mix(hex('#f4f8fb'), sk[2], 0.28)), '--snow-o': clamp((wWin - 0.5) * 4, 0, 1).toFixed(2),
         '--bloom-o': clamp((wSpr - 0.62) * 4, 0, 1).toFixed(2), '--fall-o': clamp((wAut - 0.55) * 3, 0, 1).toFixed(2),
-        '--pine': css(mix(near(0.72, mix(sk[2], gE, 0.8), 0.22), mist, 0.18)),
+        '--pine': css(mix(near(0.74, mix(sk[2], gE, 0.8), 0.2), mist, 0.07)),
         '--pad-o': clamp((0.62 - wWin) * 5, 0, 1).toFixed(2), '--fl-o': clamp((0.62 - wWin) * 5, 0, 1).toFixed(2),
         '--tint': css(mix(mix(c.sk[2], grey[2], cover), g, 0.12)),
         '--w0': css(mix(mix(sk[2], sk[1], 0.3), mix(sk[2], hex('#ffffff'), 0.3), ice * 0.6)),
         '--w1': css(mix(mix(sk[1], g, 0.62), mix(sk[1], hex('#dfe8ea'), 0.35), ice * 0.55)),
         '--pad': css(mix(g, hex('#3f9e68'), 0.25 + 0.25 * t)),
-        '--sky-orb': css(orbC),
-        '--sky-halo': (Math.max(c.halo * 1.3, 0.5) * (1 - cover)).toFixed(3),
-        '--sky-oo': clamp(1 - cover * 1.05, 0, 1).toFixed(2),
-        '--sky-stars': (c.stars * (1 - clamp(cloud / 100, 0, 1) * 0.9)).toFixed(2),
+        // світила: --sky-orb — колір того, що зараз світить (ним мальовано сяйво, доріжку й відблиск на воді), --sky-oo — як сильно
+        '--sky-orb': css(orbC), '--sun-c': css(sunC), '--moon-c': css(moonC),
+        '--sky-halo': (Math.max(c.halo * 1.3, 0.5) * (1 - cover) * litK).toFixed(3),
+        '--sky-oo': (clearK * litK).toFixed(2),
+        '--sun-o': clearK.toFixed(2),
+        '--moon-o': (clearK * (1 - 0.68 * clamp(t * 2, 0, 1))).toFixed(2),                 // удень місяць блідий
+        '--orb-blur': (1.5 + 4 * cover + (k === 'fog' ? 3 : 0)).toFixed(1) + 'px',          // за серпанком сонце розпливається
+        '--orb-k': (1 + 0.3 * clamp(1 - s.alt / 12, 0, 1)).toFixed(2),                      // низько над обрієм воно здається більшим
+        '--sky-stars': (c.stars * (1 - clamp(cloud / 100, 0, 1) * 0.9) * (1 - 0.45 * (moonUp ? m.k : 0))).toFixed(2),   // при повні зір менше
+        '--fly-o': clamp((wSum + wSpr * 0.5 - 0.3) * 2, 0, 1).toFixed(2),                  // світляки — теплої пори
         // старі назви: смужка під шапкою й відблиск угорі сторінки
         '--sky1': css(sk[1]), '--sky2': css(sk[2]),
       },
@@ -196,41 +219,40 @@
     };
   }
 
-  /// Де стоїть світило на сцені: пейзаж розтягується на всю ширину й обрізається, тож рахуємо від справжніх розмірів.
-  /// Сонце йде дугою зліва направо; уночі на його місці — місяць навпроти (проста модель, без фаз).
+  /// Де на сцені стоять сонце й місяць: пейзаж розтягується на всю ширину й обрізається, тож рахуємо від справжніх
+  /// розмірів. Обидва йдуть дугою зліва направо за своїм справжнім часовим кутом; узимку дуга вужча й нижча, улітку —
+  /// ширша й вища (так само, як у небі). Місяць сходить і заходить у свій час, тож буває видний і вдень, а вночі — ні.
   function place() {
     const el = document.getElementById('sky');
-    if (!el || !el.clientWidth) return;
+    if (!el || !el.clientWidth || !pos) return;
     const W = el.clientWidth, H = el.clientHeight;
     // На телефоні малюнок нижчий за сцену (над ним — саме небо), тож масштаб беремо з малюнка, а не зі сцени.
     const svg = el.querySelector('.sky-art svg');
     const s = Math.max(W / ART_W, ((svg && svg.clientHeight) || H) / ART_H);
     const vis = W / s;                                        // скільки одиниць пейзажу видно в ширину
     const left = (ART_W - vis) / 2;
-    const ha = pos.day ? pos.ha : Math.atan2(Math.sin(pos.ha - Math.PI), Math.cos(pos.ha - Math.PI));
-    const alt = pos.day ? pos.alt : -pos.alt;
-    // Ліворуч у небі стоїть заголовок, праворуч на широкому екрані — балачки: світило ходить у проміжку між ними,
+    // Ліворуч у небі стоїть заголовок, праворуч на широкому екрані — балачки: світила ходять у проміжку між ними,
     // якраз над мостом (на телефоні — правою половиною), щоб не сідати ні на текст, ні за панель.
     const narrow = el.dataset.anchor === 'narrow';
-    const xu = left + vis * (narrow ? 0.8 + 0.08 * Math.sin(ha) : 0.52 + 0.16 * Math.sin(ha));
-    el.style.setProperty('--ol', ((xu - left) * s).toFixed(1) + 'px');
-    // Висота — частка від сьогоднішнього полудня: опівдні світило стоїть угорі сцени й улітку, і взимку (коли справжнє
-    // сонце ледь піднімається над обрієм і весь день лежало б на пагорбах). Нижче обрію — тоне в далеких пагорбах.
-    // Угорі сцени лежить шапка сайту — під неї світило не заходить.
+    const xOf = (b) => { const u = clamp(b.ha / 2.1, -1, 1); return left + vis * (narrow ? 0.8 + 0.08 * u : 0.52 + 0.16 * u); };
+    // Висота — частка від найвищої точки, але не чесна: інакше зимове сонце (16° опівдні) весь день лежало б на пагорбах.
+    // Беремо середнє між «сьогоднішнім полуднем» і «літнім»: узимку опівдні світило стоїть на півдорозі, улітку — вгорі.
+    // Нижче обрію воно тоне в далеких пагорбах. Угорі сцени лежить шапка сайту — під неї світила не заходять.
     const hdr = (document.querySelector('header') || {}).offsetHeight || 56;
     const horizon = HORIZON * s, room = Math.max(60, H - horizon - hdr - 48);
-    const up = alt >= 0 ? (alt / Math.max(12, pos.top || 40)) * room : alt * 3.3 * s;
-    el.style.setProperty('--ob', Math.min(H - hdr - 36, horizon + up).toFixed(1) + 'px');
+    const yOf = (b) => Math.min(H - hdr - 36, horizon + (b.alt >= 0 ? (b.alt / Math.max(12, Math.sqrt(b.top * pos.sumTop))) * room : b.alt * 3.3 * s));
+    const put = (name, x, y) => { el.style.setProperty('--' + name + 'l', ((x - left) * s).toFixed(1) + 'px'); el.style.setProperty('--' + name + 'b', y.toFixed(1) + 'px'); };
+    put('o', xOf(pos.sun), yOf(pos.sun));
+    put('m', xOf(pos.moon), yOf(pos.moon));
+    const L = pos.lit || pos.sun, xu = xOf(L);                // сяйво, доріжка й відблиск на воді — під тим, що світить
+    put('h', xu, yOf(L));
     el.style.setProperty('--rx', xu.toFixed(1));
-    // хмари: картинка 2400×300, тож один її оберт — у вісім висот шару; проба мерехтіння: де на сцені лежить вода
+    // хмари: картинка 2400×300, тож один її оберт — у вісім висот шару
     const cl = el.querySelector('.sky-clouds');
     if (cl) el.style.setProperty('--cl-p', (cl.clientHeight * 8).toFixed(0) + 'px');
-    el.style.setProperty('--wt', (H - 204 * s).toFixed(0) + 'px');
-    el.style.setProperty('--wh', (84 * s).toFixed(0) + 'px');
-    el.style.setProperty('--gw', (190 * s).toFixed(0) + 'px');
     // Тіні на воді падають у бік від світила; що нижче воно стоїть, то вони довші.
-    const lean = (-34 * Math.sin(ha)).toFixed(1);
-    const long = (0.5 + 0.45 * (1 - clamp(alt / Math.max(12, pos.top || 40), 0, 1))).toFixed(2);
+    const lean = (pos.lit ? -34 * Math.sin(pos.lit.ha) : 0).toFixed(1);
+    const long = (0.5 + 0.45 * (1 - clamp(pos.lit ? pos.lit.alt / Math.max(12, pos.lit.top) : 1, 0, 1))).toFixed(2);
     el.querySelectorAll('[data-shd]').forEach((sh) => {
       const y = sh.dataset.shd;
       sh.setAttribute('transform', 'translate(0 ' + y + ') skewX(' + lean + ') scale(1 -' + long + ') translate(0 -' + y + ')');
@@ -270,8 +292,8 @@
     const r = rng(seed), R = (a, b) => a + (b - a) * r(), N = (a, b) => Math.floor(R(a, b));
     const dark = band === 'wet' || band === 'storm' || band === 'over';
     const cMid = dark ? mix(v.cl2, v.cl, 0.22) : mix(v.cl, v.cl2, 0.3);
-    const cLit = dark ? mix(v.cl2, v.cl, 0.6) : mix(v.cl, [255, 255, 255], 0.35);
-    const cDark = dark ? mix(v.cl2, [0, 0, 0], 0.28) : mix(v.cl2, v.cl, 0.25);
+    const cLit = dark ? mix(v.cl2, v.cl, 0.5) : mix(v.cl, [255, 255, 255], 0.14);     // світло й тінь тихі — хмара не має перетягувати увагу
+    const cDark = dark ? mix(v.cl2, [0, 0, 0], 0.16) : mix(v.cl2, v.cl, 0.4);
     const sprite = (c) => {                        // м'яка кулька — «глина», з якої ліпимо
       const s = document.createElement('canvas');
       s.width = s.height = 64;
@@ -286,7 +308,7 @@
       g.globalAlpha = Math.min(1, a);
       for (const dx of [0, W, -W]) if (x + dx + rad > 0 && x + dx - rad < W) g.drawImage(s, x + dx - rad, y - ry, rad * 2, ry * 2);
     };
-    const side = Math.sin(pos.day ? pos.ha : pos.ha - Math.PI) >= 0 ? 1 : -1;      // з якого боку світло
+    const side = pos && pos.lit && Math.sin(pos.lit.ha) < 0 ? -1 : 1;              // з якого боку світло
     const shape = (bl, litA, darkA) => {
       g.globalCompositeOperation = 'source-over';
       for (const b of bl) dab(sMid, b[0], b[1], b[2], b[3], b[4]);
@@ -379,25 +401,25 @@
     sc.style.setProperty('--b2x', p(70, 94)); sc.style.setProperty('--b2y', p(6, 26)); sc.style.setProperty('--b3x', p(36, 64));
   }
 
-  /// ПРОБА (вмикається з адреси ?water=1): сонячна доріжка мерехтить. Два розсипи блискіток по черзі гаснуть і
-  /// розгоряються (CSS) в окремому маленькому шарі над водою — пейзаж при цьому не перемальовується.
-  let glitKey = '';
-  function glitter(v) {
-    const el = document.querySelector('#sky .sky-glit');
-    if (!el || !document.documentElement.dataset.water || v.orb === glitKey) return;
-    glitKey = v.orb;
-    const r = rng(seed + 31);
-    const tile = () => {
-      let s = '';
-      for (let i = 0; i < 90; i++) {
-        const u = Math.pow(r(), 1.5), gx = 95 + ((r() + r() + r() - 1.5) / 1.5) * (5 + u * 80);
-        s += '<ellipse cx="' + gx.toFixed(1) + '" cy="' + (2 + 80 * u).toFixed(1) + '" rx="' + (((2.5 + r() * 8) * (0.4 + u * 1.9)) / 2).toFixed(1) + '" ry="' + (((0.5 + r() * 0.9) * (0.5 + u * 1.3)) / 2).toFixed(2) +
-          '" opacity="' + (0.35 + r() * 0.65).toFixed(2) + '"/>';
-      }
-      return 'url("data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 190 84" preserveAspectRatio="none" fill="rgb(' + v.orb + ')">' + s + '</svg>') + '")';
-    };
-    el.style.setProperty('--gl1', tile());
-    el.style.setProperty('--gl2', tile());
+  /// Місяць: освітлена частина за фазою (серп, половина, горб, повня), темний бік ледь видно, на світлому — «моря».
+  /// Серп нахиляється, поки місяць іде небом.
+  let moonKey = '';
+  function moonImg(v) {
+    const el = document.querySelector('#sky .sky-moon');
+    if (!el) return;
+    el.style.transform = 'rotate(' + (Math.sin(v.moon.ha) * 30).toFixed(0) + 'deg)';
+    const k = Math.round(v.moon.k * 40) / 40, rgb = v.moonRgb.join(','), key = k + '|' + v.moon.wax + '|' + rgb;
+    if (key === moonKey) return;
+    moonKey = key;
+    // права половина диска + термінатор: до половини він угинається в освітлений бік (серп), після — вигинається в темний (горб)
+    const lit = 'M50 4A46 46 0 0 1 50 96A' + (Math.abs(1 - 2 * k) * 46).toFixed(1) + ' 46 0 0 ' + (k < 0.5 ? 0 : 1) + ' 50 4Z';
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><clipPath id="c"><path d="' + lit + '"/></clipPath>' +
+      '<radialGradient id="g" cx=".62" cy=".4" r=".7"><stop offset="0" stop-color="rgb(' + mix(v.moonRgb, [255, 255, 255], 0.3).join(',') + ')"/><stop offset="1" stop-color="rgb(' + rgb + ')"/></radialGradient></defs>' +
+      '<g' + (v.moon.wax ? '' : ' transform="translate(100 0) scale(-1 1)"') + '><circle cx="50" cy="50" r="46" fill="rgb(' + rgb + ')" opacity=".09"/>' +
+      '<g clip-path="url(#c)"><rect width="100" height="100" fill="url(#g)"/><g fill="#000" opacity=".1"><ellipse cx="62" cy="34" rx="13" ry="10"/><ellipse cx="44" cy="52" rx="9" ry="12"/>' +
+      '<ellipse cx="66" cy="62" rx="10" ry="7"/><ellipse cx="52" cy="76" rx="6" ry="4"/></g></g></g></svg>';
+    el.style.setProperty('--moon-img', 'url("data:image/svg+xml,' + encodeURIComponent(svg) + '")');
+    el.style.setProperty('--moon-k', (0.3 + 0.7 * k).toFixed(2));
   }
 
   /// Дощ і сніг: три шари глибини, у кожному краплі розкидано випадково — довжина, яскравість, місце. Шар — плитка, що
@@ -451,7 +473,7 @@
       });
     }
     clouds(v);
-    glitter(v);
+    moonImg(v);
     fall(v.kind, v.code);
     place();
   }
@@ -506,7 +528,6 @@
       o = opts || {};
       const q = new URLSearchParams(location.search);
       if (q.get('seed')) seed = +q.get('seed') | 0;
-      if (q.get('water')) document.documentElement.dataset.water = '1';   // ПРОБА: мерехтіння сонячної доріжки
       if (q.get('sky') || q.get('wx') || q.get('day') || q.get('cover')) fake = { at: parseTime(q.get('sky'), q.get('day')), cover: q.get('cover') != null ? +q.get('cover') : null, wx: WORD[q.get('wx')] ? q.get('wx') : null };
       mount();
       paint();
