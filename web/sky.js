@@ -15,7 +15,7 @@
   let o = null;
   let wx = null;                 // остання відповідь /api/weather або null
   let wxAt = 0;
-  let fake = null;               // перегляд: { at: Date | null, wx: 'rain' | … } — з адреси ?sky=06:10&wx=rain&day=01-15 (місяць-день) або HSky.preview()
+  let fake = null;               // перегляд: { at: Date | null, wx: 'rain' | … } — з адреси ?sky=06:10&wx=rain&day=01-15 (місяць-день, можна з роком: 2028-12-31) або HSky.preview()
   let pos = null;                // де зараз сонце й місяць і що з них світить — рахує compute(), розставляє place()
   const KYIV = { lat: 50.45, lon: 30.52 };
   const RAD = Math.PI / 180;
@@ -27,30 +27,44 @@
   // ---------------------------------------------------------------------------------------------
 
   /// Сонце й місяць: висота над обрієм (градуси), часовий кут (радіани, від'ємний — до кульмінації) і top — найвища
-  /// точка, куди світило сьогодні підніметься. Формули спрощені: сонце — з похибкою до градуса; місяць — середній рух
-  /// уздовж екліптики (без нахилу орбіти й нерівностей): похибка до кількох градусів і до години в часі сходу, для
-  /// картинки досить. Фаза місяця — за синодичним місяцем від відомого молодика: k — освітлена частка, wax — росте.
+  /// точка, куди світило сьогодні підніметься. Формули — «низької точності» з астрономічного щорічника: сонце — до
+  /// сотих градуса, місяць — близько 0,3° за довготою й 0,2° за широтою (час повні — до півгодини). Цього досить і
+  /// для фази, і щоб упізнати місячне затемнення.
+  ///   moon.k — освітлена частка, moon.wax — росте; moon.size — видимий розмір проти середнього (у перигеї більший,
+  ///   в апогеї менший, різниця до 14 %); moon.ecl — затемнення: 0 — нема, 1 — повне (місяць у тіні Землі й червоніє:
+  ///   до нього доходить лише світло, заломлене земною атмосферою, — те саме, що робить червоним захід сонця).
   function sky(date, lat, lon) {
-    const d = (date.getTime() - Date.UTC(2000, 0, 1, 12)) / 864e5;
+    const d = (date.getTime() - Date.UTC(2000, 0, 1, 12)) / 864e5, T = d / 36525;
     const L = (280.46 + 0.9856474 * d) % 360;
     const g = ((357.528 + 0.9856003 * d) % 360) * RAD;
     const lam = (L + 1.915 * Math.sin(g) + 0.02 * Math.sin(2 * g)) * RAD;
     const eps = (23.439 - 0.0000004 * d) * RAD;
     const gmst = (18.697374558 + 24.06570982441908 * d) % 24;
-    const body = (l) => {
-      const ra = Math.atan2(Math.cos(eps) * Math.sin(l), Math.cos(l)), dec = Math.asin(Math.sin(eps) * Math.sin(l));
+    const body = (l, b) => {
+      const cb = Math.cos(b), sb = Math.sin(b);
+      const ra = Math.atan2(Math.cos(eps) * cb * Math.sin(l) - Math.sin(eps) * sb, cb * Math.cos(l));
+      const dec = Math.asin(Math.sin(eps) * cb * Math.sin(l) + Math.cos(eps) * sb);
       let ha = (gmst * 15 + lon) * RAD - ra;
       ha = Math.atan2(Math.sin(ha), Math.cos(ha));
       const alt = Math.asin(Math.sin(lat * RAD) * Math.sin(dec) + Math.cos(lat * RAD) * Math.cos(dec) * Math.cos(ha));
       return { alt: alt / RAD, ha, top: 90 - Math.abs(lat - dec / RAD) };
     };
-    const SYN = 29.530588853;
-    const age = ((((date.getTime() - Date.UTC(2000, 0, 6, 18, 14)) / 864e5) % SYN) + SYN) % SYN;   // днів від молодика
-    const el = (age / SYN) * 2 * Math.PI;                                                        // на скільки місяць відстав від сонця
-    const moon = body(lam + el);
-    moon.k = (1 - Math.cos(el)) / 2;
-    moon.wax = age < SYN / 2;
-    return { sun: body(lam), moon };
+    const S = (a, b) => Math.sin((a + b * T) * RAD), C = (a, b) => Math.cos((a + b * T) * RAD);
+    const ml = (218.32 + 481267.881 * T + 6.29 * S(135.0, 477198.87) - 1.27 * S(259.3, -413335.36) + 0.66 * S(235.7, 890534.22) +
+      0.21 * S(269.9, 954397.74) - 0.19 * S(357.5, 35999.05) - 0.11 * S(186.5, 966404.03)) * RAD;
+    const mb = (5.13 * S(93.3, 483202.02) + 0.28 * S(228.2, 960400.89) - 0.28 * S(318.3, 6003.15) - 0.17 * S(217.6, -407332.21)) * RAD;
+    const par = 0.9508 + 0.0518 * C(135.0, 477198.87) + 0.0095 * C(259.3, -413335.36) + 0.0078 * C(235.7, 890534.22) + 0.0028 * C(269.9, 954397.74);
+    const moon = body(ml, mb);
+    const cosEl = Math.cos(mb) * Math.cos(ml - lam);                       // кут між місяцем і сонцем
+    moon.k = (1 - cosEl) / 2;
+    moon.wax = Math.sin(ml - lam) > 0;
+    moon.size = par / 0.9508;
+    // затемнення: наскільки місяць зайшов у тінь Землі (її радіус на відстані місяця — близько 0,7°, радіус місяця — 0,26°)
+    const sep = Math.acos(clamp(-cosEl, -1, 1)) / RAD, umbra = 1.02 * (0.9983 * par - 0.264), sd = 0.2724 * par;
+    moon.ecl = clamp((umbra + sd - sep) / (2 * sd), 0, 1);
+    const sun = body(lam, 0);
+    sun.size = 1 + 0.017 * Math.cos(g);                                    // на початку січня Земля найближче до Сонця
+    return { sun, moon };
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -151,17 +165,23 @@
     // Що світить: удень сонце; вночі місяць, якщо він над обрієм (і то сильніше, що повніший); буває й безмісячна ніч.
     const day = s.alt > -4, moonUp = m.alt > 0;
     const lit = day ? s : moonUp ? m : null;
-    const litK = day ? 1 : moonUp ? 0.25 + 0.75 * m.k : 0;
+    const litK = day ? 1 : moonUp ? (0.25 + 0.75 * m.k) * (1 - 0.75 * m.ecl) : 0;     // у затемнення місяць майже не світить
     pos = { sun: s, moon: m, lit, sumTop: 90 - Math.abs(p.lat - 23.44) };
-    const sunC = mix(mix(c.orb, hex('#eef3ff'), 0.3 * wWin), sk[2], 0.1);                                       // узимку сонце блідіше
-    const moonC = mix(mix(hex('#ece8d6'), hex('#ffd9a0'), clamp(1 - m.alt / 12, 0, 1) * 0.6), sk[2], 0.08);     // низько над обрієм місяць рудуватий
+    // Колір: узимку сонце блідіше, біля самого обрію — червоніше (світло йде крізь товщу повітря, синє розсіюється).
+    // Місяць низько над обрієм рудуватий з тієї ж причини, а в затемнення — мідно-червоний.
+    const low = (b) => clamp(1 - b.alt / 9, 0, 1);
+    const sunC = mix(mix(mix(c.orb, hex('#eef3ff'), 0.3 * wWin), hex('#ff7a3d'), low(s) * 0.4), sk[2], 0.1);
+    const moonC = mix(mix(mix(hex('#ece8d6'), hex('#ffd0a0'), low(m) * 0.6), hex('#a23a22'), m.ecl * 0.85), sk[2], 0.08);
+    // Розмір: місяць у перигеї до 14 % більший, ніж в апогеї; сонце в січні на 3 % більше, ніж у липні; а біля обрію
+    // обоє здаються більшими (це вже обман зору, але він є в кожного, хто дивиться на схід місяця).
+    const sizeOf = (b) => b.size * (1 + 0.25 * low(b));
     const orbC = day ? sunC : moonC;
     const clearK = clamp(1 - cover * 1.05, 0, 1);
     const sinE = lit ? Math.sin(lit.ha) : 0;                  // де світило: −1 — ліворуч, +1 — праворуч
     return {
       phase, kind: k, cloud, code: fake && fake.wx ? null : wx ? wx.code : null,
       cl: mix(sk[2], hex('#ffffff'), 0.08 + 0.24 * t), cl2: mix(sk[1], hex('#0d1318'), wet ? 0.5 : 0.22),
-      moon: { k: m.k, wax: m.wax, ha: m.ha }, moonRgb: moonC,
+      moon: { k: m.k, wax: m.wax, ha: m.ha, s: sizeOf(m) }, moonRgb: moonC,
       vars: {
         '--sk0': css(sk[0]), '--sk1': css(sk[1]), '--sk2': css(sk[2]),
         // далі від нас — ближче до кольору обрію (повітряна димка), ближче — до нашого зеленого; низ кожного шару
@@ -207,7 +227,8 @@
         '--sun-o': clearK.toFixed(2),
         '--moon-o': (clearK * (1 - 0.68 * clamp(t * 2, 0, 1))).toFixed(2),                 // удень місяць блідий
         '--orb-blur': (1.5 + 4 * cover + (k === 'fog' ? 3 : 0)).toFixed(1) + 'px',          // за серпанком сонце розпливається
-        '--orb-k': (1 + 0.3 * clamp(1 - s.alt / 12, 0, 1)).toFixed(2),                      // низько над обрієм воно здається більшим
+        '--orb-k': sizeOf(s).toFixed(2),
+        '--birch': css(mix(hex('#e9ece4'), sk[1], 0.3)),                                    // стовбури беріз
         '--sky-stars': (c.stars * (1 - clamp(cloud / 100, 0, 1) * 0.9) * (1 - 0.45 * (moonUp ? m.k : 0))).toFixed(2),   // при повні зір менше
         '--fly-o': clamp((wSum + wSpr * 0.5 - 0.3) * 2, 0, 1).toFixed(2),                  // світляки — теплої пори
         // старі назви: смужка під шапкою й відблиск угорі сторінки
@@ -407,7 +428,7 @@
   function moonImg(v) {
     const el = document.querySelector('#sky .sky-moon');
     if (!el) return;
-    el.style.transform = 'rotate(' + (Math.sin(v.moon.ha) * 30).toFixed(0) + 'deg)';
+    el.style.transform = 'rotate(' + (Math.sin(v.moon.ha) * 30).toFixed(0) + 'deg) scale(' + v.moon.s.toFixed(3) + ')';
     const k = Math.round(v.moon.k * 40) / 40, rgb = v.moonRgb.join(','), key = k + '|' + v.moon.wax + '|' + rgb;
     if (key === moonKey) return;
     moonKey = key;
@@ -489,10 +510,10 @@
   }
 
   const parseTime = (s, day) => {
-    const t = /^(\d{1,2}):(\d{2})$/.exec(s || ''), d = /^(\d{1,2})-(\d{1,2})$/.exec(day || '');
+    const t = /^(\d{1,2}):(\d{2})$/.exec(s || ''), d = /^(?:(\d{4})-)?(\d{1,2})-(\d{1,2})$/.exec(day || '');
     if (!t && !d) return null;
     const at = new Date();
-    if (d) at.setMonth(+d[1] - 1, +d[2]);
+    if (d) { if (d[1]) at.setFullYear(+d[1]); at.setMonth(+d[2] - 1, +d[3]); }
     if (t) at.setHours(+t[1], +t[2], 0, 0);
     return at;
   };
@@ -528,6 +549,8 @@
       o = opts || {};
       const q = new URLSearchParams(location.search);
       if (q.get('seed')) seed = +q.get('seed') | 0;
+      // ТИМЧАСОВО: пропозиції до лісу на вибір (?x=far,birch,willow,birds) — прибрати після вибору разом із правилами [data-x] у polyva.css
+      if (q.get('x')) document.documentElement.dataset.x = q.get('x').replace(/,/g, ' ');
       if (q.get('sky') || q.get('wx') || q.get('day') || q.get('cover')) fake = { at: parseTime(q.get('sky'), q.get('day')), cover: q.get('cover') != null ? +q.get('cover') : null, wx: WORD[q.get('wx')] ? q.get('wx') : null };
       mount();
       paint();
