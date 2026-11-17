@@ -134,7 +134,7 @@ header .memenu .badge { position: static; }
   --w0: #172a46; --w1: #0c1a20; --pad: #1a3c2b; --sky-orb: #ece8d6; --sky-halo: .16; --sky-oo: 1; --sky-stars: 1;
   --sky-cl: #37485f; --sky-cirrus: .22; --sky-deck: 0; --sky1: #0b1830; --sky2: #1c2f4f;
   --l1m: #1d3a3f; --lb: #152b2c; --l2m: #1a3337; --l3m: #10211b; --rock: #2c3a38; --rock-l: #4c5a55; --mist: #5d7477; --sky-mist: .5;
-  --tint: #2c5550; --sun-x: 30%; --sh-x: 6px; --shd: #050d0a; --sky-shd: .45; --l3t: #132823; --l3tm: #1c3634; --sky-lamp: 1; --l2b: #12262a; --l2bm: #1b3438; --rock2: #2a3836; --rock2-l: #46544f;
+  --tint: #2c5550; --sun-x: 30%; --sh-x: 6px; --shd: #050d0a; --sky-shd: .45; --shade: #04090a; --leaf: #1b3a2c; --pine: #16302a; --leaf-o: 1; --pad-o: 1; --fl-o: 1; --l3t: #132823; --l3tm: #1c3634; --sky-lamp: 1; --l2b: #12262a; --l2bm: #1b3438; --rock2: #2a3836; --rock2-l: #46544f;
 
 }
 /* ---- фон сайту: не плаский зелений, а туман — дві великі м'які плями кольору неба (--tint міняється разом із
@@ -157,7 +157,7 @@ header::before {
   background: radial-gradient(48% 190% at var(--sun-x) 118%, color-mix(in srgb, var(--tint) 30%, transparent), transparent),
     linear-gradient(180deg, color-mix(in srgb, color-mix(in srgb, var(--sk0) 66%, var(--bg)) 90%, transparent), color-mix(in srgb, color-mix(in srgb, var(--sk1) 40%, var(--bg)) 84%, transparent));
   -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
-  box-shadow: 0 16px 30px -18px rgba(0, 0, 0, .75);
+  box-shadow: 0 16px 30px -18px rgba(0, 0, 0, .6), 0 22px 44px -22px color-mix(in srgb, var(--shade) 60%, transparent);
 }
 body.route-home:not(.scrolled) header::before { opacity: 0; }
 @media (prefers-reduced-motion: reduce) { header::before { transition: none; } }
@@ -168,10 +168,11 @@ section.panel, aside.panel {
   background: radial-gradient(85% 170px at var(--sun-x) 0, color-mix(in srgb, var(--tint) 13%, transparent) 0, transparent 100%) padding-box,
     linear-gradient(var(--panel), var(--panel)) padding-box,
     radial-gradient(62% 120% at var(--sun-x) 0, color-mix(in srgb, var(--tint) 46%, var(--line)) 0, var(--line) 100%) border-box;
-  /* тінь — головний акцент блока: глибока, м'яка, падає в бік від сонця */
-  box-shadow: var(--sh-x) 28px 48px -18px rgba(0, 0, 0, .8), calc(var(--sh-x) / 3) 6px 14px -8px rgba(0, 0, 0, .5);
+  /* Тінь — акцент блока: м'яка, падає в бік від сонця. Вона не чисто чорна: довкола темного ядра — серпанок кольору
+     неба над нами (--shade): удень синьо-зелений, на заході синій, уночі його майже нема. */
+  box-shadow: var(--sh-x) 20px 34px -20px rgba(0, 0, 0, .62), calc(var(--sh-x) * 1.4) 30px 64px -22px color-mix(in srgb, var(--shade) 62%, transparent);
 }
-header .vswitch, header .mini, header .tools { border-color: color-mix(in srgb, var(--tint) 24%, var(--line)); box-shadow: var(--sh-x) 10px 20px -10px rgba(0, 0, 0, .7); }
+header .vswitch, header .mini, header .tools { border-color: color-mix(in srgb, var(--tint) 24%, var(--line)); box-shadow: var(--sh-x) 8px 16px -10px rgba(0, 0, 0, .55), var(--sh-x) 12px 26px -12px color-mix(in srgb, var(--shade) 55%, transparent); }
 /* Під шапкою — волосинка світла з того боку, де зараз сонце; на кожній сторінці. */
 
 
@@ -238,10 +239,13 @@ main { position: relative; z-index: 1; }
 .ld-water { fill: url(#ob-gw); }
 .ld-glint { fill: none; stroke: var(--mist); stroke-width: 1.4; stroke-linecap: round; opacity: .2; }
 .ld-refl { fill: url(#ob-gr); transform: translateX(calc(var(--rx, 1400) * 1px)); }
-.ld-pad { fill: var(--pad); }
-.ld-fl { fill: #f4c542; }
-.ld-fl-c { fill: #a86a08; }
-.ld-fl-glow { fill: #f4c542; opacity: .16; }
+/* пора року: латаття є з весни до осені, жовті глечики цвітуть улітку, крони листяних восени руді, взимку голі */
+.ld-pad { fill: var(--pad); opacity: var(--pad-o); }
+.ld-fl { fill: #f4c542; opacity: var(--fl-o); }
+.ld-fl-c { fill: #a86a08; opacity: var(--fl-o); }
+.ld-fl-glow { fill: #f4c542; opacity: calc(var(--fl-o) * .16); }
+.ld-crown { fill: var(--leaf); opacity: var(--leaf-o); }
+.ld-pine { fill: var(--pine); }
 .ld-reed { stroke: var(--l4b); fill: var(--l4b); }
 .ob-s1 { stop-color: var(--l1); }
 .ob-s1m { stop-color: var(--l1m); }

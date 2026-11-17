@@ -15,7 +15,7 @@
   let o = null;
   let wx = null;                 // остання відповідь /api/weather або null
   let wxAt = 0;
-  let fake = null;               // перегляд: { at: Date | null, wx: 'rain' | … } — з адреси ?sky=06:10&wx=rain або HSky.preview()
+  let fake = null;               // перегляд: { at: Date | null, wx: 'rain' | … } — з адреси ?sky=06:10&wx=rain&day=01-15 (місяць-день) або HSky.preview()
   let pos = { alt: 0, ha: 0, day: true };
   const KYIV = { lat: 50.45, lon: 30.52 };
   const RAD = Math.PI / 180;
@@ -52,6 +52,12 @@
   const mix = (a, b, t) => a.map((x, i) => Math.round(x + (b[i] - x) * t));
   const css = (c) => 'rgb(' + c.join(' ') + ')';
   const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+  // Пора року: як виглядає земля й листя опівдні взимку (іній), навесні, влітку й восени. Літо — те, з чого
+  // намальовано пейзаж; решта — множник до нього, тож ніч, сутінки й погода діють так само в будь-яку пору.
+  const SUMMER = hex('#3a7355');
+  const LAND = ['#93a6a4', '#56894a', '#3a7355', '#7c743c'].map(hex);
+  const LEAF = ['#7f8d88', '#6f9f52', '#3a7355', '#a8782f'].map(hex);
+  const EVER = ['#4d6f66', '#3a7355', '#3a7355', '#3f6e4c'].map(hex);   // сосни зелені цілий рік, узимку — з інеєм
   const BG = hex('#0f1f18');     // наш зелений: у нього сходить передній план, тож пейзаж виростає зі сторінки
   /// Чотири пори: небо згори донизу (верх, середина, обрій), зелень землі в цьому світлі, світило, сяйво довкола, зорі.
   /// Небо тримається нашого зеленого: верх — глибокий синьо-зелений (у нього вростає шапка), обрій — теплий, до
@@ -106,12 +112,22 @@
     // Кольори неба лишаємо повними (схід і захід мають бути гарні); крапля нашого зеленого лише в'яже їх зі сторінкою.
     const dim = 0.05;
     const sk = c.sk.map((x, i) => mix(mix(x, grey[i], cover), BG, dim));
-    const g = mix(c.g, mix(c.g, hex('#222b2a'), 0.5), cover);
+    const g0 = mix(c.g, mix(c.g, hex('#222b2a'), 0.5), cover);
+    // Пора року йде плавно: середина зими — 15 січня, весни — 15 квітня, літа — 15 липня, осені — 15 жовтня.
+    const mo = at.getMonth() + at.getDate() / 31;
+    const sw = [0.5, 3.5, 6.5, 9.5].map((c0) => Math.max(0, Math.cos(((mo - c0) * Math.PI) / 6)));
+    const swSum = sw[0] + sw[1] + sw[2] + sw[3];
+    const [wWin, wSpr, wSum, wAut] = sw.map((x) => x / swSum);
+    const season = (cols) => cols[0].map((_, i) => cols[0][i] * wWin + cols[1][i] * wSpr + cols[2][i] * wSum + cols[3][i] * wAut);
+    const tone = (base, col) => base.map((x, i) => clamp(Math.round((x * col[i]) / SUMMER[i]), 0, 255));
+    const g = tone(g0, season(LAND)), gE = tone(g0, season(EVER));
+    const ice = clamp((wWin - 0.45) * 2.2, 0, 1);            // серед зими річка під льодом — світліша й без блиску
     const l4 = mix(g, BG, 0.74);
     // Туман — колір обрію, розбілений; у «туман» за погодою його вдвічі більше.
     const mist = mix(sk[2], hex('#ffffff'), 0.2 + 0.16 * t);
 
     const l1 = mix(sk[2], g, 0.24), l2 = mix(sk[2], g, 0.54), l2b = mix(sk[2], g, 0.76), l3 = mix(mix(g, BG, 0.34), sk[2], 0.1);
+    const l3e = mix(mix(gE, BG, 0.34), sk[2], 0.1);
 
     pos = { alt: s.alt, ha: s.ha, top: s.top, day: s.alt > -4 };
     return {
@@ -135,11 +151,19 @@
         '--sun-x': Math.round(50 + 42 * Math.sin(s.alt > -4 ? s.ha : s.ha - Math.PI)) + '%',
         '--sh-x': Math.round(-18 * Math.sin(s.alt > -4 ? s.ha : s.ha - Math.PI)) + 'px',
         // ближні сосни: не чорні силуети, а в тому ж серпанку, що й усе
-        '--l3t': css(mix(l3, sk[2], 0.3)), '--l3tm': css(mix(mix(l3, sk[2], 0.3), mist, 0.45)),
+        '--l3t': css(mix(l3e, sk[2], 0.3)), '--l3tm': css(mix(mix(l3e, sk[2], 0.3), mist, 0.45)),
         // тіні на воді: темні, а в хмарну погоду слабші (сонця нема — нема й тіні)
-        '--shd': css(mix(mix(sk[1], g, 0.62), hex('#020806'), 0.66)), '--sky-shd': ((1 - cover) * 0.5 + 0.1).toFixed(2),
+        // Тінь бере колір неба над нею: удень синьо-зелена, на заході синя, вночі майже чорна.
+        '--shd': css(mix(mix(sk[0], g, 0.3), hex('#020806'), 0.6)), '--sky-shd': ((1 - cover) * 0.5 + 0.1).toFixed(2),
+        '--shade': css(mix(mix(c.sk[0], grey[0], cover), hex('#020504'), 0.5)),
+        // пора року: листя крон (взимку дерева голі), латаття (є з весни до осені), жовті квіти (цвітуть улітку)
+        '--leaf': css(mix(sk[2], tone(g0, season(LEAF)), 0.76)), '--leaf-o': (1 - 0.72 * wWin).toFixed(2),
+        '--pine': css(mix(sk[2], gE, 0.8)),
+        '--pad-o': clamp((wSum + wSpr * 0.7 + wAut * 0.6 - wWin) * 1.7, 0, 1).toFixed(2),
+        '--fl-o': clamp((wSum + wSpr * 0.5 + wAut * 0.35) * 1.6 - 0.2, 0, 1).toFixed(2),
         '--tint': css(mix(mix(c.sk[2], grey[2], cover), g, 0.12)),
-        '--w0': css(mix(sk[2], sk[1], 0.3)), '--w1': css(mix(sk[1], g, 0.62)),
+        '--w0': css(mix(mix(sk[2], sk[1], 0.3), mix(sk[2], hex('#ffffff'), 0.3), ice * 0.6)),
+        '--w1': css(mix(mix(sk[1], g, 0.62), mix(sk[1], hex('#dfe8ea'), 0.35), ice * 0.55)),
         '--pad': css(mix(g, hex('#3f9e68'), 0.25 + 0.25 * t)),
         '--sky-orb': css(mix(pos.day ? c.orb : P.night.orb, sk[2], 0.1)),
         '--sky-halo': (c.halo * 0.9 * (1 - cover)).toFixed(3),
@@ -220,11 +244,12 @@
       .catch(() => { /* сервер без погоди чи Open-Meteo мовчить — небо лишається ясним */ });
   }
 
-  const parseTime = (s) => {
-    const t = /^(\d{1,2}):(\d{2})$/.exec(s || '');
-    if (!t) return null;
+  const parseTime = (s, day) => {
+    const t = /^(\d{1,2}):(\d{2})$/.exec(s || ''), d = /^(\d{1,2})-(\d{1,2})$/.exec(day || '');
+    if (!t && !d) return null;
     const at = new Date();
-    at.setHours(+t[1], +t[2], 0, 0);
+    if (d) at.setMonth(+d[1] - 1, +d[2]);
+    if (t) at.setHours(+t[1], +t[2], 0, 0);
     return at;
   };
 
@@ -258,7 +283,7 @@
     init(opts) {
       o = opts || {};
       const q = new URLSearchParams(location.search);
-      if (q.get('sky') || q.get('wx')) fake = { at: parseTime(q.get('sky')), wx: WORD[q.get('wx')] ? q.get('wx') : null };
+      if (q.get('sky') || q.get('wx') || q.get('day')) fake = { at: parseTime(q.get('sky'), q.get('day')), wx: WORD[q.get('wx')] ? q.get('wx') : null };
       mount();
       paint();
       setInterval(() => { if (!document.hidden) { paint(); load(false); } }, 5 * 60000);
@@ -268,7 +293,7 @@
     ready() { load(true); },
     /// Для перевірок і показу: HSky.preview({ time: '21:40', wx: 'snow' }); без аргументів — назад до справжнього.
     preview(p) {
-      fake = p ? { at: parseTime(p.time), wx: p.wx && WORD[p.wx] ? p.wx : null } : null;
+      fake = p ? { at: parseTime(p.time, p.day), wx: p.wx && WORD[p.wx] ? p.wx : null } : null;
       paint();
     },
     /// Сцена з'явилась чи змінила розмір (зайшли на головну) — розставити світило й підписи ще раз.

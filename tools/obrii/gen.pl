@@ -31,16 +31,16 @@ my $rockL = q{M1310 311 L1330 303 L1338 330 L1318 340 Z M1364 291 L1392 293 L139
 # ---- ближчі схили: сосни й крони, які вже видно поодинці, і гранітна скеля на лівому березі — «гори поруч»
 sub yML { my $x = shift; my $t = ss(($x - 140) / 440); my $top = 300 + 7 * sin($x / 90 + .5); $top + (374 - $top) * $t }
 sub yMR { my $x = shift; my $t = ss((1880 - $x) / 420); my $top = 296 + 7 * sin($x / 80 + 1.7); $top + (374 - $top) * $t }
-sub pine { my ($x, $y, $h, $w) = @_; sprintf('<path d="M%.1f %.1f L%.1f %.1f L%.1f %.1f L%.1f %.1f L%.1f %.1f L%.1f %.1f L%.1f %.1f L%.1f %.1f L%.1f %.1f L%.1f %.1f L%.1f %.1f Z"/>',
+sub pine { my ($x, $y, $h, $w, $cl) = @_; sprintf('<path' . ($cl ? qq{ class="$cl"} : '') . ' d="M%.1f %.1f L%.1f %.1f L%.1f %.1f L%.1f %.1f L%.1f %.1f L%.1f %.1f L%.1f %.1f L%.1f %.1f L%.1f %.1f L%.1f %.1f L%.1f %.1f Z"/>',
   $x, $y - $h, $x + $w * .32, $y - $h * .62, $x + $w * .14, $y - $h * .62, $x + $w * .42, $y - $h * .3, $x + $w * .2, $y - $h * .3, $x + $w * .5, $y,
   $x - $w * .5, $y, $x - $w * .2, $y - $h * .3, $x - $w * .42, $y - $h * .3, $x - $w * .14, $y - $h * .62, $x - $w * .32, $y - $h * .62) }
-sub crown { my ($x, $y, $h, $w) = @_; sprintf('<ellipse cx="%.1f" cy="%.1f" rx="%.1f" ry="%.1f"/><ellipse cx="%.1f" cy="%.1f" rx="%.1f" ry="%.1f"/>',
+sub crown { my ($x, $y, $h, $w) = @_; sprintf('<ellipse class="ld-crown" cx="%.1f" cy="%.1f" rx="%.1f" ry="%.1f"/><ellipse class="ld-crown" cx="%.1f" cy="%.1f" rx="%.1f" ry="%.1f"/>',
   $x, $y - $h * .55, $w * .75, $h * .5, $x + $w * .45, $y - $h * .36, $w * .55, $h * .34) }
 srand(11);
 sub trees { my ($f, $x0, $x1, $tf, $skip) = @_; my $o = ''; my $x = $x0;
   while ($x < $x1) { my $t = $tf->($x); my $k = 1 - .45 * $t; my $y = $f->($x) + 3;
     unless ($t > .88 || ($skip && $x > $skip->[0] && $x < $skip->[1])) {
-      $o .= rand() < .62 ? pine($x, $y, (30 + rand(22)) * $k, (12 + rand(6)) * $k) : crown($x, $y, (22 + rand(14)) * $k, (12 + rand(5)) * $k); }
+      $o .= rand() < .62 ? pine($x, $y, (30 + rand(22)) * $k, (12 + rand(6)) * $k, 'ld-pine') : crown($x, $y, (22 + rand(14)) * $k, (12 + rand(5)) * $k); }
     $x += (8 + rand(11)) * $k + 3; }
   $o }
 @p = (); for (my $x = -40; $x <= 580; $x += 12) { push @p, [$x, yML($x)]; }
@@ -50,7 +50,7 @@ my $midR = smooth(@p) . ' V380 H1460 Z';
 my $midT = trees(\&yML, -30, 560, sub { ss(($_[0] - 140) / 440) }, [296, 486]) . trees(\&yMR, 1480, 2030, sub { ss((1880 - $_[0]) / 420) });
 my $rock2 = 'M290 380 L298 352 L316 341 L322 318 L348 305 L370 309 L392 296 L420 300 L434 319 L460 326 L470 350 L486 380 Z';
 my $rock2L = 'M322 318 L348 305 L358 336 L332 347 Z M392 296 L420 300 L425 331 L400 336 Z M434 319 L460 326 L462 352 L444 356 Z';
-my $rock2T = pine(336, 308, 24, 11) . pine(378, 306, 30, 13) . crown(408, 300, 22, 12) . pine(446, 324, 22, 10);
+my $rock2T = pine(336, 308, 24, 11, 'ld-pine') . pine(378, 306, 30, 13, 'ld-pine') . crown(408, 300, 22, 12) . pine(446, 324, 22, 10, 'ld-pine');
 # ---- дерева на ближніх берегах — великі, майже чіткі
 my $nearT = '';
 for my $q ([34, 104, 34], [78, 78, 27], [124, 118, 38], [176, 86, 29], [216, 64, 23], [1790, 70, 24], [1832, 96, 31], [1880, 122, 39], [1930, 84, 28], [1972, 108, 35]) { my ($x, $hh, $w) = @$q;
