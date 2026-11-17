@@ -288,6 +288,14 @@
     init(opts) {
       o = opts || {};
       const q = new URLSearchParams(location.search);
+      // ТИМЧАСОВО: проби стилю пейзажу (?art=vol|cut|poster|…), див. static/obrii-proby.css — прибрати після вибору
+      if (q.get('art')) {
+        document.documentElement.dataset.art = q.get('art');
+        const l = document.createElement('link');
+        l.rel = 'stylesheet';
+        l.href = '/static/obrii-proby.css';
+        document.head.appendChild(l);
+      }
       if (q.get('sky') || q.get('wx') || q.get('day')) fake = { at: parseTime(q.get('sky'), q.get('day')), wx: WORD[q.get('wx')] ? q.get('wx') : null };
       mount();
       paint();
