@@ -18,8 +18,10 @@ public static partial class KhataAirbnb
     public const string RatesUrl = "https://bank.gov.ua/NBUStatService/v1/statdirectory/exchange?json";
     /// <summary>Скільки оголошень беремо з одного міста.</summary>
     public const int PerCity = 60;
-    /// <summary>Скільки з них може бути «дивом» (замок, човен, будиночок на дереві).</summary>
-    public const int WowPerCity = 15;
+    /// <summary>Скільки з них може бути «хатою мрії»: замок чи інше диво, житло біля пляжу чи з видом на море, вілла з басейном.</summary>
+    public const int DreamPerCity = 25;
+    /// <summary>Яка частка цієї квоти — «мрії» з ціною, якої ніхто не чекає (<see cref="KhataFlat.IsOdd"/>): кожна третя.</summary>
+    public const int DreamOddShare = 3;
     /// <summary>Ціна за ніч у доларах, у межах якої оголошення схоже на справжнє (за межами — заглушки й одруківки хазяїв).</summary>
     public const int MinUsd = 8, MaxUsd = 5000;
     public const int MinReviews = 3;
@@ -233,7 +235,92 @@ public static partial class KhataAirbnb
 
     /// <summary>Рядок набору, який нам годиться: є фото, ціна й назва.</summary>
     public sealed record Row(string Id, string Name, string Photo, double Price, string PropertyType, string RoomType, int Bedrooms,
-        int Reviews, double? Rating);
+        int Reviews, double? Rating, Perk Perks = Perk.None);
+
+    /// <summary>Чим житло гарне, за позначками зручностей у наборі: пляж поруч, вид на море, вода поруч, басейн.</summary>
+    [Flags]
+    public enum Perk { None = 0, Beach = 1, SeaView = 2, Water = 4, Pool = 8 }
+
+    /// <summary>
+    /// Колонка <c>amenities</c> (JSON-масив підписів на кшталт «Beachfront», «Sea view», «Private pool») → позначки.
+    /// «Pool table» і «Pool view» басейном не рахуємо.
+    /// </summary>
+    public static Perk PerksOf(string? amenitiesJson)
+    {
+        var perks = Perk.None;
+        if (string.IsNullOrWhiteSpace(amenitiesJson)) return perks;
+        try
+        {
+            using var doc = JsonDocument.Parse(amenitiesJson);
+            if (doc.RootElement.ValueKind != JsonValueKind.Array) return perks;
+            foreach (var e in doc.RootElement.EnumerateArray())
+            {
+                if (e.ValueKind != JsonValueKind.String) continue;
+                var a = (e.GetString() ?? "").ToLowerInvariant();
+                if (a.Contains("beachfront") || a.Contains("beach access")) perks |= Perk.Beach;
+                if (a.Contains("sea view") || a.Contains("ocean view") || a.Contains("beach view") || a.Contains("bay view")) perks |= Perk.SeaView;
+                if (a.Contains("waterfront") || a.Contains("lake view") || a.Contains("river view") || a.Contains("canal view")
+                    || a.Contains("harbor view") || a.Contains("marina view")) perks |= Perk.Water;
+                if (a.Contains("pool") && !a.Contains("table") && !a.Contains("view") && !a.Contains("toys") && !a.Contains("cover")) perks |= Perk.Pool;
+            }
+        }
+        catch (JsonException) { }
+        return perks;
+    }
+
+    /// <summary>
+    /// Слова в назві, що обіцяють цікаву архітектуру чи старовину (початок слова, кількома мовами): готика, середньовіччя,
+    /// бароко, палац, маєток, абатство, фортеця, вежа, «архітекторський»… Хазяї таким пишаються й виносять у назву.
+    /// </summary>
+    static readonly string[] Grand =
+    [
+        "gothic", "gotic", "gótic", "gotisch", "medieval", "médiéval", "mittelalter", "baroque", "barocco", "barock", "renaissance",
+        "rinascimento", "victorian", "georgian", "tudor", "heritage", "manor", "manoir", "mansion", "palace", "palazzo", "palacio",
+        "palais", "castle", "château", "chateau", "castello", "castillo", "schloss", "abbey", "abbaye", "abbazia", "monaster", "convent",
+        "chapel", "chapelle", "cappella", "church", "église", "chiesa", "fortress", "fortezza", "citadel", "architect", "haussmann",
+        "siècle", "secolo", "siglo", "century", "jugendstil",
+    ];
+
+    /// <summary>
+    /// Слова «поруч із»: «Castle view», «Close to the Palace», «5 min to the Abbey» — це про сусіда, а не про саме житло.
+    /// З ними архітектурі в назві не віримо. («Historic center» і «X Tower» сюди ж: тому їх нема в списку вище.)
+    /// </summary>
+    static readonly HashSet<string> Nearby = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "view", "views", "near", "nearby", "close", "next", "min", "mins", "minute", "minutes", "walk", "walking", "steps", "vista",
+        "vistas", "vicino", "près", "proche", "cerca", "junto", "nähe", "blick", "opposite", "facing", "behind",
+    };
+
+    /// <summary>Слова «розкоші»: самі по собі — реклама, але разом із басейном чи морем уже щось означають.</summary>
+    static readonly string[] Fancy = ["penthouse", "luxury", "luxurious", "lujo", "lusso", "luxe", "luxus", "designer", "villa", "infinity", "rooftop"];
+
+    static bool Named(string name, string[] words)
+    {
+        foreach (var word in Words(name))
+            foreach (var w in words)
+                if (word.StartsWith(w, StringComparison.OrdinalIgnoreCase)) return true;
+        return false;
+    }
+
+    /// <summary>Цікава архітектура чи старовина — за назвою оголошення.</summary>
+    public static bool IsGrand(string name) => Named(name, Grand) && !Words(name).Any(Nearby.Contains);
+
+    /// <summary>
+    /// «Хата мрії»: диво, якому можна вірити (замок, вежа, човен…), цікава архітектура (готика, палац, маєток — за назвою),
+    /// житло біля пляжу чи з видом на море, або вілла чи «люкс» із басейном. Такі беремо окремою квотою й позначаємо —
+    /// у грі з них збирається добірка «Хати мрії».
+    /// </summary>
+    public static bool IsDream(Row r) =>
+        IsWow(r.PropertyType, r.Name) || IsGrand(r.Name) || (r.Perks & (Perk.Beach | Perk.SeaView)) != 0
+        || (r.Perks.HasFlag(Perk.Pool) && (string.Equals(r.PropertyType, "Entire villa", StringComparison.OrdinalIgnoreCase) || Named(r.Name, Fancy)));
+
+    /// <summary>
+    /// Наскільки це «мрія»: диво й архітектура важать більше за будь-яке море з басейном (замок без моря — вище за
+    /// квартиру на пляжі), далі пляж і море, басейн — приємний додаток.
+    /// </summary>
+    static int Rank(Row r) =>
+        (IsWow(r.PropertyType, r.Name) ? 8 : 0) + (IsGrand(r.Name) ? 6 : 0) + (r.Perks.HasFlag(Perk.Beach) ? 2 : 0)
+        + (r.Perks.HasFlag(Perk.SeaView) ? 2 : 0) + (r.Perks.HasFlag(Perk.Pool) ? 1 : 0);
 
     /// <summary>Рядки файлу міста: колонки шукаємо за назвами з першого рядка (їх там 90, і порядок міняється).</summary>
     public static IEnumerable<Row> Rows(TextReader csv)
@@ -257,7 +344,7 @@ public static partial class KhataAirbnb
             _ = int.TryParse(Get("bedrooms"), NumberStyles.Integer, CultureInfo.InvariantCulture, out var beds);
             _ = int.TryParse(Get("number_of_reviews"), NumberStyles.Integer, CultureInfo.InvariantCulture, out var reviews);
             double? rating = double.TryParse(Get("review_scores_rating"), NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out var rt) ? rt : null;
-            yield return new Row(id, name, photo, price, Get("property_type"), Get("room_type"), beds, reviews, rating);
+            yield return new Row(id, name, photo, price, Get("property_type"), Get("room_type"), beds, reviews, rating, PerksOf(Get("amenities")));
         }
     }
 
@@ -351,7 +438,7 @@ public static partial class KhataAirbnb
         return $"{n.ToString(CultureInfo.InvariantCulture)} {word}";
     }
 
-    /// <summary>Що це за житло — рядок для розкриття: «Назва з оголошення» · тип · спальні.</summary>
+    /// <summary>Що це за житло — рядок для розкриття: «Назва з оголошення» · тип · спальні · біля пляжу · з басейном.</summary>
     public static string About(Row r)
     {
         var name = new string([.. r.Name.Where(ch => !char.IsControl(ch))]).Trim();
@@ -360,13 +447,17 @@ public static partial class KhataAirbnb
         // «Замок», якого назва не підтверджує, — це, найпевніше, студія з вигадливим хазяїном: про тип тоді мовчимо.
         if (Types.TryGetValue(r.PropertyType, out var type) && (!IsWowType(r.PropertyType) || IsWow(r.PropertyType, r.Name))) parts.Add(type);
         parts.Add(Bedrooms(r.Bedrooms));
+        if (r.Perks.HasFlag(Perk.Beach)) parts.Add("біля пляжу");
+        if (r.Perks.HasFlag(Perk.SeaView)) parts.Add("вид на море");
+        else if (r.Perks.HasFlag(Perk.Water) && !r.Perks.HasFlag(Perk.Beach)) parts.Add("біля води");
+        if (r.Perks.HasFlag(Perk.Pool)) parts.Add("з басейном");
         return string.Join(" · ", parts);
     }
 
     /// <summary>
-    /// Відібрати оголошення міста: лише ціле житло (не кімната), з відгуками, з притомною ціною. Спершу — «дива» (скільки
-    /// є, але не більше <see cref="WowPerCity"/>), решта — порівну з п'яти цінових смуг від найдешевших до найдорожчих:
-    /// так у місті є і халупа, і палац, а вгадувати цікаво.
+    /// Відібрати оголошення міста: лише ціле житло (не кімната), з відгуками, з притомною ціною. Спершу — «хати мрії»
+    /// (<see cref="IsDream"/>; найцікавіші першими, кожна третя — з несподіваною ціною, не більше <see cref="DreamPerCity"/>), решта — порівну з п'яти цінових
+    /// смуг від найдешевших до найдорожчих: так у місті є і халупа, і палац, а вгадувати цікаво.
     /// </summary>
     public static List<KhataExternal> Pick(IEnumerable<Row> rows, City city, double usdPerUnit, int take, Random rng)
     {
@@ -382,11 +473,24 @@ public static partial class KhataAirbnb
         Shuffle(good, rng);
         var picked = new List<(Row R, int Usd)>();
         var taken = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var g in good.Where(g => IsWow(g.R.PropertyType, g.R.Name)).Take(Math.Min(WowPerCity, take)))
+        // «Мрії»: головне — цікавість, тож усюди йдемо від найвиразніших (замки, архітектура, море; OrderBy стабільний,
+        // а список уже перетасовано — серед однакових вибір випадковий). Третину квоти віддаємо «мріям» із ціною, якої
+        // ніхто не чекає: удвічі дешевше за звичайне для міста або втричі дорожче — порівну з обох боків, скільки є.
+        var typical = good.Count == 0 ? 0 : good.Select(g => g.Usd).Order().ElementAt(good.Count / 2);
+        var dreamQuota = Math.Min(DreamPerCity, take);
+        var dreams = good.Where(g => IsDream(g.R)).OrderByDescending(g => Rank(g.R)).ToList();
+        var cheap = dreams.Where(g => g.Usd < typical && KhataFlat.IsOdd(g.Usd, typical)).ToList();
+        var dear = dreams.Where(g => g.Usd > typical && KhataFlat.IsOdd(g.Usd, typical)).ToList();
+        var oddQuota = dreamQuota / DreamOddShare;
+        var fromCheap = Math.Min(cheap.Count, Math.Max(oddQuota / 2, oddQuota - dear.Count));
+        foreach (var g in cheap.Take(fromCheap).Concat(dear.Take(oddQuota - fromCheap)).Concat(dreams))
+        {
+            if (picked.Count >= dreamQuota) break;
             if (taken.Add(g.R.Id)) picked.Add(g);
+        }
 
-        // решта — лише звичайне житло: «див» понад квоту не добираємо, інакше місто з сотнею замків стало б самими замками
-        var rest = good.Where(g => !IsWow(g.R.PropertyType, g.R.Name)).OrderBy(g => g.Usd).ToList();
+        // решта — лише звичайне житло: «мрій» понад квоту не добираємо, інакше курортне місто стало б самими віллами
+        var rest = good.Where(g => !IsDream(g.R)).OrderBy(g => g.Usd).ToList();
         const int bands = 5;
         var need = take - picked.Count;
         for (var b = 0; b < bands && need > 0 && rest.Count > 0; b++)
@@ -402,7 +506,7 @@ public static partial class KhataAirbnb
         }
 
         return [.. picked.Select(g => new KhataExternal(g.R.Id, city.Region, city.Name, g.Usd, KhataFlat.Night, [g.R.Photo],
-            "https://www.airbnb.com/rooms/" + g.R.Id, About(g.R)))];
+            "https://www.airbnb.com/rooms/" + g.R.Id, About(g.R), IsDream(g.R), KhataFlat.IsOdd(g.Usd, typical)))];
     }
 
     static void Shuffle<T>(List<T> list, Random rng)

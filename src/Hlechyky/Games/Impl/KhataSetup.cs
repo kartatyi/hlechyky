@@ -118,6 +118,13 @@ public static class KhataSetup
                 eu = store.ByRegion.GetValueOrDefault(KhataRegions.Eu),
                 world = store.ByRegion.GetValueOrDefault(KhataRegions.World),
             },
+            // скільки з них «хат мрії» (замки, біля моря, вілли з басейном) — для опції столу «Добірка»
+            dreamByRegion = new
+            {
+                ua = store.DreamByRegion.GetValueOrDefault(KhataRegions.Ua),
+                eu = store.DreamByRegion.GetValueOrDefault(KhataRegions.Eu),
+                world = store.DreamByRegion.GetValueOrDefault(KhataRegions.World),
+            },
             // звідки квартири: від гравців і зі сторонніх джерел
             bySource = new
             {

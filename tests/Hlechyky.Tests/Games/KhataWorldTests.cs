@@ -210,7 +210,7 @@ public class KhataWorldTests
         Assert.Equal(60, picked.Count);
         Assert.Equal(60, picked.Select(p => p.ExtId).Distinct().Count());
         var wonders = picked.Count(p => int.Parse(p.ExtId) is > 500 and <= 540);
-        Assert.Equal(KhataAirbnb.WowPerCity, wonders);
+        Assert.Equal(KhataAirbnb.DreamPerCity, wonders);
         Assert.DoesNotContain(picked, p => int.Parse(p.ExtId) > 540 && p.About!.Contains("замок"));     // сумнівний «замок» замком не звемо
         Assert.Contains(picked, p => p.About!.Contains("замок") || p.About.Contains("будиночок на дереві"));
         // звичайні — з усіх п'яти цінових смуг, а не лише з дешевих чи дорогих
@@ -221,6 +221,72 @@ public class KhataWorldTests
         Assert.Equal(3, KhataAirbnb.Pick(rows.Take(3), Riga, 1, 60, new Random(1)).Count);
         Assert.Empty(KhataAirbnb.Pick([], Riga, 1, 60, new Random(1)));
     }
+
+    [Theory]
+    [InlineData("Gothic Revival loft by the cathedral", true)]
+    [InlineData("Palazzo storico nel centro", true)]
+    [InlineData("Appartement dans un château du XVIIe", true)]
+    [InlineData("Medieval tower house", true)]
+    [InlineData("Architect designed home", true)]
+    [InlineData("17th century merchant house", true)]
+    [InlineData("Cozy studio near metro", false)]
+    [InlineData("Квартира біля вокзалу", false)]
+    [InlineData("Modern Penthouse Close to the Palace", false)]      // палац — сусід, а не це житло
+    [InlineData("Castle view apartment", false)]
+    [InlineData("Historic Center Luxury flat", false)]               // «історичний центр» — це адреса
+    [InlineData("Luxe 20th Floor Mercury Tower Apartment", false)]   // «Tower» — назва висотки
+    public void Grand_architecture_is_read_from_the_title(string name, bool grand) => Assert.Equal(grand, KhataAirbnb.IsGrand(name));
+
+    [Fact]
+    public void A_dream_home_is_a_wonder_grand_architecture_the_sea_or_a_villa_with_a_pool()
+    {
+        Assert.True(KhataAirbnb.IsDream(Row(1, 100, type: "Castle", name: "Old Castle")));
+        Assert.True(KhataAirbnb.IsDream(Row(2, 100, name: "Baroque palace apartment")));
+        Assert.True(KhataAirbnb.IsDream(Row(3, 100) with { Perks = KhataAirbnb.Perk.Beach }));
+        Assert.True(KhataAirbnb.IsDream(Row(4, 100) with { Perks = KhataAirbnb.Perk.SeaView }));
+        Assert.True(KhataAirbnb.IsDream(Row(5, 100, type: "Entire villa") with { Perks = KhataAirbnb.Perk.Pool }));
+        Assert.True(KhataAirbnb.IsDream(Row(6, 100, name: "Luxury penthouse") with { Perks = KhataAirbnb.Perk.Pool }));
+        Assert.False(KhataAirbnb.IsDream(Row(7, 100) with { Perks = KhataAirbnb.Perk.Pool }));      // басейн у дворі багатоповерхівки — ще не мрія
+        Assert.False(KhataAirbnb.IsDream(Row(8, 100, name: "Luxury penthouse")));                   // «люкс» без басейну — лише реклама
+        Assert.False(KhataAirbnb.IsDream(Row(9, 100) with { Perks = KhataAirbnb.Perk.Water }));
+        Assert.Equal(KhataAirbnb.Perk.Beach | KhataAirbnb.Perk.Pool, KhataAirbnb.PerksOf("[\"Beachfront\", \"Private pool\", \"Pool table\", \"Wifi\"]"));
+        Assert.Equal(KhataAirbnb.Perk.None, KhataAirbnb.PerksOf("[\"Pool table\", \"Pool view\", \"Wifi\"]"));
+        Assert.Equal(KhataAirbnb.Perk.None, KhataAirbnb.PerksOf("не json"));
+        Assert.Equal("«Житло 3» · квартира · 1 спальня · біля пляжу · з басейном",
+            KhataAirbnb.About(Row(3, 100) with { Perks = KhataAirbnb.Perk.Beach | KhataAirbnb.Perk.Pool }));
+    }
+
+    [Fact]
+    public void Among_dream_homes_a_third_have_a_price_nobody_expects_and_the_rest_are_simply_the_best()
+    {
+        var rows = new List<KhataAirbnb.Row>();
+        for (var i = 1; i <= 300; i++) rows.Add(Row(i, 100));                                               // звичайне житло: серединна ціна — 100
+        for (var i = 301; i <= 340; i++) rows.Add(Row(i, 110, type: "Castle", name: "Old Castle " + i));    // замки за звичайну ціну
+        for (var i = 341; i <= 350; i++) rows.Add(Row(i, 40, type: "Castle", name: "Old Castle " + i));     // замки задешево
+        for (var i = 351; i <= 360; i++) rows.Add(Row(i, 900, type: "Castle", name: "Old Castle " + i));    // і задорого
+        for (var i = 361; i <= 380; i++) rows.Add(Row(i, 35, name: "Gothic loft " + i));                    // готика задешево — «мрія» скромніша
+        var picked = KhataAirbnb.Pick(rows, Riga, 1, take: 60, new Random(5));
+        Assert.Equal(60, picked.Count);
+        var dreams = picked.Where(p => p.Dream).ToList();
+        Assert.Equal(KhataAirbnb.DreamPerCity, dreams.Count);
+        Assert.All(picked.Where(p => !p.Dream), p => Assert.Equal(100, p.Price));
+        Assert.All(picked, p => Assert.Equal(p.Price is <= 50 or >= 300, p.Odd));
+        var odd = dreams.Where(p => p.Odd).ToList();
+        Assert.True(odd.Count >= KhataAirbnb.DreamPerCity / KhataAirbnb.DreamOddShare);
+        Assert.True(odd.Count(p => p.Price < 100) >= 4 && odd.Count(p => p.Price > 100) >= 4);              // і дешеві, і дорогі
+        // цікавість важить більше за ціну: поки вистачає замків, дешева «готика» у квоту не йде
+        Assert.DoesNotContain(dreams, p => p.About!.Contains("Gothic"));
+    }
+
+    [Theory]
+    [InlineData(100, 100, false)]
+    [InlineData(50, 100, true)]
+    [InlineData(51, 100, false)]
+    [InlineData(299, 100, false)]
+    [InlineData(300, 100, true)]
+    [InlineData(300, 0, false)]
+    public void A_price_is_unexpected_when_half_the_usual_or_triple(int price, int typical, bool odd) =>
+        Assert.Equal(odd, KhataFlat.IsOdd(price, typical));
 
     // ------------------------------------------------------------------------------------------
     // банк

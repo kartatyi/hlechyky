@@ -40,7 +40,7 @@
   /// Шкала словами — та сама, що Khata.Points на сервері. Міняєш там — міняй і тут.
   function rulesFor(ctx) {
     const k = boostOf(ctx);
-    return 'Оголошення справжні. Оренда — за місяць, житло з Airbnb — за ніч: що саме, написано біля поля. '
+    return 'Оголошення справжні. Оренда буває за місяць, а буває подобова — за добу чи ніч: що саме, щоразу написано великим над полем. '
       + 'Бали за точність, до 1000 за квартиру: промах до 2 % — 1000, на 10 % — близько 800, на чверть — 540, удвічі — 130, '
       + 'утричі — майже нуль. Удвічі дешевше й удвічі дорожче — однаково далеко. '
       + 'За кожні ' + POINTS_PER_SHARD + ' балів за квартири, які бачиш уперше, — 🏺 ' + k + ' ' + plural(k, 'черепок', 'черепки', 'черепків');
@@ -194,8 +194,8 @@
   // розкриття, підсумок, рахунок
   // =========================================================================================
 
-  /// Оренда — за місяць, оголошення Airbnb — за ніч.
-  const perText = (per) => (per === 'night' ? 'за ніч' : 'за місяць');
+  /// Оренда — за місяць; подобове — за добу (Україна, гривні) чи за ніч (Airbnb, долари).
+  const perText = (per, unit) => (per === 'night' ? (unit === '₴' ? 'за добу' : 'за ніч') : 'за місяць');
   /// Посилання назовні: нова вкладка, без передачі сторінки, з якої прийшли.
   const OUT = ' target="_blank" rel="noopener noreferrer"';
 
@@ -211,7 +211,7 @@
         + (admin && r.id ? '<button type="button" class="ghost khdrop" data-drop="' + r.id + '" title="Прибрати це оголошення з гри назавжди">🗑</button>' : '')
         + '</div>'
       : (r.by ? '<div class="khby muted small">квартиру додав(ла) ' + ctx.esc(r.by) + '</div>' : '');
-    const head = '<div class="khans"><span class="muted small">Насправді</span><b>' + money(r.price, v.unit) + '</b><i>' + perText(v.per) + '</i></div>' + what;
+    const head = '<div class="khans"><span class="muted small">Насправді</span><b>' + money(r.price, v.unit) + '</b><i>' + perText(v.per, v.unit) + '</i></div>' + what;
     const say = r.say ? '<div class="khsay"><img src="/static/glek.svg" alt=""><span>' + ctx.esc(r.say) + '</span></div>' : '';
     if (!rows.length) return head + '<div class="gempty">Отакої — ніхто не назвав жодної ціни.</div>' + say;
     return head + '<div class="khrows">' + rows.map((x, n) =>
@@ -228,7 +228,7 @@
     return '<details class="khrecap" open><summary>Як це було · ' + list.length + ' ' + flatsWord(list.length) + '</summary><ol>'
       + list.map((r) => '<li>' + (r.photo ? '<img src="' + ctx.esc(r.photo) + '" alt="" loading="lazy" referrerpolicy="no-referrer">' : '<span class="khnoimg">🔒</span>')
         + '<span class="khrc"><b>' + ctx.esc(r.city) + '</b> — '
-        + '<span class="khra">' + money(r.price, r.unit) + ' ' + perText(r.per) + '</span>'
+        + '<span class="khra">' + money(r.price, r.unit) + ' ' + perText(r.per, r.unit) + '</span>'
         + (r.link ? ' <a class="khrl" href="' + ctx.esc(r.link) + '"' + OUT + ' title="Відкрити оголошення">↗</a>' : '')
         + (r.best != null ? '<span class="khrb">найближче — ' + ctx.esc(nameAt(ctx, r.best) || ctx.seatName(r.best)) + ': ' + money(r.value, r.unit)
           + ' · <b>+' + num(r.points) + '</b></span>' : '<span class="khrb">ніхто не назвав ціни</span>') + '</span></li>').join('')
@@ -357,6 +357,30 @@
     city.classList.toggle('wait', lobby || phase === 'between' || !!v.closed);
     city.hidden = !cityText;
 
+    // За що ціна й у чому — великим над полем: оренда буває за місяць, а буває подобова, у гривнях чи в доларах.
+    // Щойно це не те, чого чекаєш (перша ж подобова, зміна проти минулої квартири), — значок підморгує й каже словами.
+    const perBox = root.querySelector('.khper');
+    const showPer = ctx.playing && phase === 'ask' && !v.closed && !!v.per;
+    if (lobby || phase === 'done') st.perRound = null;
+    if (showPer && st.perRound !== v.round) {
+      const first = v.round <= 1 || !st.perWas;
+      const perNew = (first ? 'month' : st.perWas) !== v.per;
+      const unitNew = !first && st.unitWas !== v.unit;
+      const says = [];
+      if (perNew) says.push(v.per === 'night' ? 'не за місяць, а за одну ' + (v.unit === '₴' ? 'добу' : 'ніч') : 'тут уже за цілий місяць');
+      if (unitNew) says.push(v.unit === '₴' ? 'і в гривнях' : 'і в доларах');
+      st.perWarn = says.length ? '⚠ увага: ' + says.join(' — ').replace(/^і в /, 'тепер у ') : '';
+      st.perWas = v.per;
+      st.unitWas = v.unit;
+      st.perRound = v.round;
+    }
+    const night = v.per === 'night';
+    const perHtml = !showPer ? '' : '<span>Скільки просять</span><b class="' + (night ? 'night' : 'month') + (st.perWarn ? ' flip' : '') + '">'
+      + (night ? '🌙 ' : '🗓 ') + perText(v.per, v.unit) + ' · ' + ctx.esc(v.unit || '') + '</b>'
+      + (st.perWarn ? '<i>' + st.perWarn + '</i>' : '');
+    setHtml(perBox, perHtml);
+    perBox.hidden = !perHtml;
+
     const rules = root.querySelector('.khrules');
     rules.hidden = !(lobby || (phase === 'between' && !v.result));
 
@@ -379,11 +403,13 @@
       if (!busy || busy === document.body || !/^(INPUT|TEXTAREA|SELECT)$/.test(busy.tagName)) input.focus();
     }
     const unit = root.querySelector('.khunit');
-    const unitText = v.unit ? v.unit + ' ' + perText(v.per) : '';
+    const unitText = v.unit ? v.unit + ' ' + perText(v.per, v.unit) : '';
     if (unit.textContent !== unitText) unit.textContent = unitText;
+    const hint = v.per && phase === 'ask' ? 'ціна ' + perText(v.per, v.unit) : 'твоя ціна';
+    if (input.placeholder !== hint) input.placeholder = hint;
 
     const my = root.querySelector('.khmy');
-    const myText = v.my != null && phase === 'ask' ? 'Твоя ціна: ' + money(v.my, v.unit) + '. Можна змінити, поки є час'
+    const myText = v.my != null && phase === 'ask' ? 'Твоя ціна: ' + money(v.my, v.unit) + ' ' + perText(v.per, v.unit) + '. Можна змінити, поки є час'
       : !ctx.mine && ctx.playing && phase === 'ask' ? 'Дивишся збоку'
       : '';
     if (my.textContent !== myText) my.textContent = myText;
@@ -402,7 +428,7 @@
       if (showBank) loadBank(root, ctx, false);
     }
     // Перемальовуємо, коли змінилось те, що в ньому написано: скільки квартир і для яких міст стіл (⚙ Налаштування).
-    const sig = [(v.bank || {}).fit, (v.bank || {}).total, regionOpt(ctx)].join('|');
+    const sig = [(v.bank || {}).fit, (v.bank || {}).total, regionOpt(ctx), ((ctx.room && ctx.room.options) || {}).pick].join('|');
     if (showBank && st.bankSig !== sig) { st.bankSig = sig; renderBank(root, ctx); }
   }
 
@@ -413,8 +439,12 @@
   function fitOf(ctx, st) {
     const b = st.bank;
     if (!b || !b.byRegion) return ((ctx.view || {}).bank || {}).fit;
+    // опція «Добірка: хати мрії» — рахуємо лише їх
+    const dream = String(((ctx.room && ctx.room.options) || {}).pick || 'all') === 'dream';
+    const by = dream ? (b.dreamByRegion || {}) : b.byRegion;
+    const sum = (keys) => keys.reduce((n, r) => n + (by[r] || 0), 0);
     const picked = regionOpt(ctx).split(',').filter((r) => r in b.byRegion);
-    return !picked.length || regionOpt(ctx).split(',').includes('all') ? b.total : picked.reduce((n, r) => n + (b.byRegion[r] || 0), 0);
+    return !picked.length || regionOpt(ctx).split(',').includes('all') ? (dream ? sum(Object.keys(by)) : b.total) : sum(picked);
   }
 
   // =========================================================================================
@@ -520,10 +550,12 @@
       const src = b.bySource || {};
       // Звідки квартири — і обов'язкові згадки джерел: Inside Airbnb (CC BY 4.0) і DIM.RIA (умова їхнього API — посилання).
       const from = [];
-      if (src.olx) from.push('з України — ' + num(src.olx) + ' оголошень оренди з OLX (за місяць, з усіма фото; на цей тиждень і лише за столами, де всі з акаунтами)');
+      if (src.olx) from.push('з України — ' + num(src.olx) + ' оголошень з OLX: оренда квартир (за місяць) і подобові будинки — біля озер, у горах, «замки» (за добу); з усіма фото, на цей тиждень і лише за столами, де всі з акаунтами');
       if (src.ria) from.push('з України — ' + num(src.ria) + ' оголошень DIM.RIA (за місяць, з усіма фото)');
       if (src.airbnb) from.push('зі світу — ' + num(src.airbnb) + ' оголошень Airbnb (за ніч, одне фото)');
       if (src.own) from.push('від гравців — ' + num(src.own));
+      const dreams = Object.values(b.dreamByRegion || {}).reduce((n, x) => n + x, 0);
+      if (dreams) from.push('серед них «хат мрії» (замки, цікава архітектура, біля моря й озер, вілли з басейном) — ' + num(dreams) + ': для них є добірка в налаштуваннях столу');
       if (src.olx || src.ria || src.airbnb) html += '<div class="muted small">Оголошення справжні: ' + from.join('; ') + '. '
         + (src.olx ? 'Оренда — <a href="https://www.olx.ua/uk/nedvizhimost/kvartiry/dolgosrochnaya-arenda-kvartir/"' + OUT + '>OLX</a>. ' : '')
         + (src.ria ? 'Оренда в Україні — <a href="https://dom.ria.com/uk/"' + OUT + '>DIM.RIA</a>. ' : '')
@@ -749,10 +781,11 @@
         + '<button type="button" class="khnext" aria-label="Наступне фото" hidden>›</button>'
         + '<div class="khdots"></div></figure>'
         + '<div class="khcity"></div>'
+        + '<div class="khper" hidden></div>'
         + '<div class="khown small" hidden></div>'
         + '<div class="khrules muted small" hidden>' + rulesFor(ctx) + '</div>'
         + '<div class="khask" hidden><input class="khin" type="text" inputmode="decimal" enterkeyhint="done" autocomplete="off"'
-        + ' placeholder="твоя ціна" aria-label="Твоя ціна оренди"><span class="khunit muted small"></span>'
+        + ' placeholder="твоя ціна" aria-label="Твоя ціна оренди"><span class="khunit"></span>'
         + '<button type="button" class="primary khgo">Відповісти</button></div>'
         + '<div class="khprevw small" aria-live="polite"></div>'
         + '<div class="khmy muted small"></div>'

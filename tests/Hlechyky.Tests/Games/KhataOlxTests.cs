@@ -43,13 +43,88 @@ public class KhataOlxTests
     [Fact]
     public void Requests_ask_one_page_of_long_term_rent_per_region()
     {
-        var fresh = KhataOlx.Url(8, cheap: false);
+        var fresh = KhataOlx.Url(8, KhataOlx.Page.Fresh);
         Assert.StartsWith("https://www.olx.ua/api/v1/offers/?", fresh);
         foreach (var part in new[] { "category_id=1760", "region_id=8", "limit=40", "offset=0", "currency=UAH", "sort_by=created_at%3Adesc" })
             Assert.Contains(part, fresh);
-        var cheap = KhataOlx.Url(8, cheap: true);
+        var cheap = KhataOlx.Url(8, KhataOlx.Page.Cheap);
         Assert.Contains("sort_by=filter_float_price%3Aasc", cheap);
         Assert.Contains("filter_float_price%3Afrom=2500", cheap);
+        var dear = KhataOlx.Url(8, KhataOlx.Page.Dear);
+        Assert.Contains("sort_by=filter_float_price%3Adesc", dear);
+        Assert.Contains("filter_float_price%3Ato=400000", dear);
+        // «хати мрії»: подобові будинки за темою — без області, сторінка на тему
+        var day = KhataOlx.DayUrl(KhataOlx.Themes[0]);
+        Assert.StartsWith("https://www.olx.ua/api/v1/offers/?", day);
+        foreach (var part in new[] { "category_id=3710", "limit=40", "offset=0", "currency=UAH", "query=%D0%B7%D0%B0%D0%BC%D0%BE%D0%BA" })
+            Assert.Contains(part, day);
+        Assert.DoesNotContain("region_id", day);
+        Assert.Equal(KhataOlx.Themes.Count + KhataOlx.Regions, KhataOlx.Steps);
+    }
+
+    /// <summary>Подобовий будинок у формі відповіді OLX (категорія 3710): тут ціна за добу, є область і тип будинку.</summary>
+    static string DayOffer(long id, string title = "A-frame біля озера Синевир", string city = "Синевирська Поляна", string region = "Закарпатська область",
+        string price = """{ "value": 3500, "type": "price", "currency": "UAH" }""", bool business = true, int category = 3710) => $$"""
+        {
+          "id": {{id}}, "url": "https://www.olx.ua/d/uk/obyavlenie/budinok-ID{{id}}.html", "title": "{{title}}", "description": "Опис із телефоном 0671112233",
+          "status": "active", "business": {{(business ? "true" : "false")}}, "category": { "id": {{category}}, "type": "accommodation" },
+          "user": { "id": 78, "name": "Stepan" },
+          "location": { "city": { "id": 1, "name": "{{city}}" }, "region": { "id": 2, "name": "{{region}}" } },
+          "params": [
+            { "key": "price", "name": "Ціна", "value": {{price}} },
+            { "key": "property_type_houses", "name": "Тип", "value": { "key": "cottage", "label": "Котедж" } },
+            { "key": "total_area", "name": "Площа", "value": { "key": "45", "label": "45 м²" } },
+            { "key": "number_of_rooms", "name": "Кімнат", "value": { "key": "1", "label": "1" } },
+            { "key": "sleep_places", "name": "Спальних місць", "value": { "key": "2", "label": "2" } },
+            { "key": "repair", "name": "Ремонт", "value": { "key": "5", "label": "Авторський проект" } }
+          ],
+          "photos": [{ "id": 1, "filename": "d{{id}}-UA", "link": "https://ireland.apollo.olxcdn.com:443/v1/files/d{{id}}-UA/image;s={width}x{height}" }]
+        }
+        """;
+
+    static KhataOlx.Theme Lake => KhataOlx.Themes.Single(t => t.Query == "біля озера");
+
+    [Fact]
+    public void A_daily_house_is_a_dream_home_priced_per_day_with_its_region_and_no_title()
+    {
+        var flat = Assert.Single(KhataOlx.ParseDay(Page(DayOffer(1)), Lake)).Flat;
+        Assert.Equal(("1", KhataRegions.Ua, "Синевирська Поляна, Закарпатська обл.", 3500, KhataFlat.Night, true),
+            (flat.ExtId, flat.Region, flat.City, flat.Price, flat.Per, flat.Dream));
+        Assert.Equal("котедж · 1 кімната · 45 м² · спальних місць: 2 · ремонт: авторський проект", flat.About);
+        var kept = JsonSerializer.Serialize(flat);
+        foreach (var secret in new[] { "A-frame", "Stepan", "0671112233" }) Assert.DoesNotContain(secret, kept);   // заголовок читаємо, але не беремо
+
+        // тему має підтвердити заголовок: пошук OLX чіпляється й за опис
+        Assert.Empty(KhataOlx.ParseDay(Page(DayOffer(2, title: "Будинок, неподалік замок")), Lake));
+        Assert.Single(KhataOlx.ParseDay(Page(DayOffer(2, title: "ЗАМОК люкс класу")), KhataOlx.Themes[0]));
+        // обласному центру область не дописуємо
+        Assert.Equal("Київ", KhataOlx.ParseDay(Page(DayOffer(3, city: "Київ", region: "Київська область")), Lake)[0].Flat.City);
+        Assert.Equal("Одеса", KhataOlx.ParseDay(Page(DayOffer(3, city: "Одеса", region: "Одеська область")), Lake)[0].Flat.City);
+        Assert.Equal("Кременчук, Полтавська обл.", KhataOlx.ParseDay(Page(DayOffer(3, city: "Кременчук", region: "Полтавська область")), Lake)[0].Flat.City);
+        // «договірна» з числом для подобових — теж ціна (так стоїть у кожному третьому)
+        var arranged = """{ "value": 22000, "type": "arranged", "currency": "UAH" }""";
+        Assert.Equal(22000, KhataOlx.ParseDay(Page(DayOffer(4, price: arranged)), Lake)[0].Flat.Price);
+        // не та категорія; ціна «з людини» (котедж за 500 грн) — не ціна будинку
+        Assert.Empty(KhataOlx.ParseDay(Page(DayOffer(5, category: 1760)), Lake));
+        Assert.Empty(KhataOlx.ParseDay(Page(DayOffer(6, price: """{ "value": 500, "type": "price", "currency": "UAH" }""")), Lake));
+        // і навпаки: подобовий будинок у місячну оренду квартир не пролазить
+        Assert.Empty(KhataOlx.Parse(Page(DayOffer(7))));
+    }
+
+    [Fact]
+    public void Dream_homes_come_from_every_theme_once_and_surprising_prices_are_marked()
+    {
+        KhataOlx.Offer D(int id, int uah) =>
+            KhataOlx.ParseDay(Page(DayOffer(id, price: $$"""{ "value": {{uah}}, "type": "price", "currency": "UAH" }""")), Lake)[0];
+        var lake = new[] { D(1, 3000), D(2, 3500), D(3, 4000), D(4, 1500), D(5, 50000) };
+        var frame = new[] { D(3, 4000), D(6, 3600), D(7, 3400) };                        // «3» знайшлось в обох темах
+        var picked = KhataOlx.PickDay([lake, frame], perTheme: 4, new Random(2), known: id => id == "2");
+        Assert.Equal(["1", "3", "4", "5", "6", "7"], picked.Select(p => p.ExtId).Order());
+        Assert.All(picked, p => Assert.True(p.Dream));
+        // серединна ціна знайденого — 3 500 за добу: 1 500 — несподівано дешево, 50 000 — несподівано дорого
+        Assert.Equal(["4", "5"], picked.Where(p => p.Odd).Select(p => p.ExtId).Order());
+        Assert.Equal(2, KhataOlx.PickDay([lake, frame], perTheme: 1, new Random(2), _ => false).Count);
+        Assert.Empty(KhataOlx.PickDay([], 4, new Random(1), _ => false));
     }
 
     [Fact]
@@ -85,6 +160,11 @@ public class KhataOlxTests
         Assert.Empty(KhataOlx.Parse(Page(Offer(3, price: noRate))));
         Assert.Empty(KhataOlx.Parse(Page(Offer(4, price: """{ "value": 300, "type": "price", "currency": "UAH" }"""))));        // подобова
         Assert.Empty(KhataOlx.Parse(Page(Offer(5, price: """{ "value": 5000000, "type": "price", "currency": "UAH" }"""))));    // продаж
+        // продаж, що заблукав у оренду: дорого й забагато за квадрат (тут 52 м² → 2 100 грн/м²) — не беремо; у Києві стеля вища
+        var sale = """{ "value": 109260, "type": "price", "currency": "UAH" }""";
+        Assert.Empty(KhataOlx.Parse(Page(Offer(7, price: sale))));
+        Assert.Single(KhataOlx.Parse(Page(Offer(8, price: sale, city: "Київ"))));
+        Assert.Single(KhataOlx.Parse(Page(Offer(9, price: """{ "value": 58000, "type": "price", "currency": "UAH" }"""))));   // до 60 000 квадратів не рахуємо
         // площа з дробом — по-людськи, а не «62.50 м²»
         var half = Offer(6, extra: """, { "key": "total_area", "name": "Загальна площа", "value": { "key": "62.5", "label": "62.50 м²" } }""").Replace("""{ "key": "total_area", "name": "Загальна площа", "value": { "key": "52", "label": "52 м²" } },""", "");
         Assert.Contains("62,5 м²", KhataOlx.Parse(Page(half))[0].Flat.About);
@@ -118,23 +198,28 @@ public class KhataOlxTests
     public void A_strange_photo_link_is_not_taken(string link) => Assert.Null(KhataOlx.Photo(link));
 
     [Fact]
-    public void Pick_takes_half_cheap_half_fresh_private_first_and_nothing_known()
+    public void Pick_takes_a_third_cheap_a_third_dear_the_rest_fresh_private_first_and_nothing_known()
     {
         KhataOlx.Offer O(int id, bool business) => KhataOlx.Parse(Page(Offer(id, business: business)))[0];
         var cheap = Enumerable.Range(1, 10).Select(i => O(i, business: i > 4)).ToList();          // 1–4 приватні
         var fresh = Enumerable.Range(11, 10).Select(i => O(i, business: i % 2 == 0)).ToList();     // непарні приватні
-        var picked = KhataOlx.Pick(fresh, cheap, take: 8, new Random(3), known: id => id == "2");
-        Assert.Equal(8, picked.Count);
-        Assert.Equal(8, picked.Select(p => p.ExtId).Distinct().Count());
+        var dear = Enumerable.Range(21, 10).Select(i => O(i, business: i > 22)).ToList();          // 21–22 приватні
+        var picked = KhataOlx.Pick(fresh, cheap, dear, take: 9, new Random(3), known: id => id == "2");
+        Assert.Equal(9, picked.Count);
+        Assert.Equal(9, picked.Select(p => p.ExtId).Distinct().Count());
         Assert.DoesNotContain(picked, p => p.ExtId == "2");
         var ids = picked.Select(p => int.Parse(p.ExtId)).ToList();
-        Assert.Equal(4, ids.Count(i => i <= 10));                                                 // половина — з дешевих
-        Assert.Equal([1, 3, 4], ids.Where(i => i <= 4).Order());                                  // приватні — першими
-        Assert.Equal(4, ids.Count(i => i > 10));
-        Assert.All(ids.Where(i => i > 10), i => Assert.True(i % 2 == 1));                         // зі свіжих — теж приватні (їх п'ять, беремо чотири)
-        // свіжих мало — добираємо дешевими
-        Assert.Equal(6, KhataOlx.Pick(fresh.Take(1).ToList(), cheap, 6, new Random(1), _ => false).Count);
-        Assert.Empty(KhataOlx.Pick([], [], 6, new Random(1), _ => false));
+        Assert.Equal([1, 3, 4], ids.Where(i => i <= 10).Order());                                 // третина — з дешевих, приватні першими
+        var fromDear = ids.Where(i => i > 20).ToList();
+        Assert.Equal(3, fromDear.Count);                                                          // третина — з найдорожчих
+        Assert.Contains(21, fromDear);
+        Assert.Contains(22, fromDear);
+        var fromFresh = ids.Where(i => i is > 10 and <= 20).ToList();
+        Assert.Equal(3, fromFresh.Count);
+        Assert.All(fromFresh, i => Assert.True(i % 2 == 1));                                      // зі свіжих — теж приватні
+        // свіжих і дорогих мало — добираємо дешевими
+        Assert.Equal(6, KhataOlx.Pick(fresh.Take(1).ToList(), cheap, [], 6, new Random(1), _ => false).Count);
+        Assert.Empty(KhataOlx.Pick([], [], [], 6, new Random(1), _ => false));
     }
 
     // ------------------------------------------------------------------------------------------
@@ -202,7 +287,7 @@ public class KhataOlxTests
     static HttpResponseMessage Json(string body) => new(HttpStatusCode.OK) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
 
     [Fact]
-    public async Task The_button_walks_the_regions_once_two_pages_each_and_lets_the_old_go()
+    public async Task The_button_walks_the_themes_and_the_regions_once_and_lets_the_old_go()
     {
         KhataImport.OlxGap = TimeSpan.Zero;
         var clock = new FakeClock();
@@ -212,7 +297,10 @@ public class KhataOlxTests
 
         var net = new FakeNet(url =>
         {
-            var region = int.Parse(System.Web.HttpUtility.ParseQueryString(new Uri(url).Query)["region_id"]!);
+            var query = System.Web.HttpUtility.ParseQueryString(new Uri(url).Query);
+            if (query["region_id"] is null)                                            // тема «хат мрії»: подобові будинки
+                return query["query"] == "біля озера" ? Json(Page(DayOffer(701), DayOffer(702, title: "Будинок, неподалік замок"))) : Json(Page());
+            var region = int.Parse(query["region_id"]!);
             var cheap = url.Contains("filter_float_price");
             return region switch
             {
@@ -226,14 +314,17 @@ public class KhataOlxTests
         Assert.Empty(net.Asked);                                                       // сам сервер на OLX не ходить — лише по кнопці
         await import.RunOlx(CancellationToken.None);
 
-        Assert.Equal(KhataOlx.Regions * 2, net.Asked.Count);
-        Assert.Equal(["501", "502", "503", "504", "801", "802"], store.Live.Select(f => f.ExtId).Order());     // «900» відпущено: йому вже вісім днів
-        Assert.All(store.Live, f => Assert.Equal((KhataSources.Olx, "OLX", "₴", KhataFlat.Month), (f.Source, f.Author, f.Unit, f.Per)));
+        Assert.Equal(KhataOlx.Themes.Count + KhataOlx.Regions * 3, net.Asked.Count);    // сторінка на тему й три на область
+        Assert.Equal(["501", "502", "503", "504", "701", "801", "802"], store.Live.Select(f => f.ExtId).Order());     // «900» відпущено: йому вже вісім днів
+        Assert.All(store.Live, f => Assert.Equal((KhataSources.Olx, "OLX", "₴"), (f.Source, f.Author, f.Unit)));
+        var dream = Assert.Single(store.Live, f => f.Dream);                           // подобовий будинок біля озера — «хата мрії», ціна за добу
+        Assert.Equal(("701", KhataFlat.Night), (dream.ExtId, dream.Per));
+        Assert.All(store.Live.Where(f => !f.Dream), f => Assert.Equal(KhataFlat.Month, f.Per));
         Assert.False(import.Olx.Running);
-        Assert.Equal((KhataOlx.Regions, 6), (import.Olx.Done, import.Olx.Added));
+        Assert.Equal((KhataOlx.Steps, 7), (import.Olx.Done, import.Olx.Added));
 
         await import.RunOlx(CancellationToken.None);                                   // удруге ті самі — нічого нового
-        Assert.Equal(6, store.Live.Count);
+        Assert.Equal(7, store.Live.Count);
         Assert.Equal(0, import.Olx.Added);
     }
 
@@ -243,13 +334,27 @@ public class KhataOlxTests
     public async Task A_refusal_stops_the_run_at_once(HttpStatusCode status)
     {
         KhataImport.OlxGap = TimeSpan.Zero;
-        var net = new FakeNet(url => url.Contains("region_id=1&") ? Json(Page(Offer(11))) : new HttpResponseMessage(status));
+        var net = new FakeNet(url => !url.Contains("region_id=") ? Json(Page()) : url.Contains("region_id=1&") ? Json(Page(Offer(11))) : new HttpResponseMessage(status));
         var store = new KhataStore(null, Dir(), new FakeClock());
         var import = new KhataImport(store, new HttpClient(net), new FakeClock());
         await import.RunOlx(CancellationToken.None);
-        Assert.Equal(3, net.Asked.Count);                                              // область 1 (дві сторінки) і перша ж відмова — далі не стукаємо, навіть по другу сторінку
+        Assert.Equal(KhataOlx.Themes.Count + 3 + 1, net.Asked.Count);                  // теми, область 1 (три сторінки) і перша ж відмова — далі не стукаємо
         Assert.Single(store.Live);
         Assert.False(import.Olx.Running);
+        Assert.Contains("відмовив", import.Olx.Message);
+    }
+
+    [Fact]
+    public async Task A_refusal_on_the_dream_themes_keeps_what_was_found_and_stops()
+    {
+        KhataImport.OlxGap = TimeSpan.Zero;
+        var castle = Uri.EscapeDataString("замок");
+        var net = new FakeNet(url => url.Contains("query=" + castle) ? Json(Page(DayOffer(1, title: "Замок над річкою"))) : new HttpResponseMessage(HttpStatusCode.Forbidden));
+        var store = new KhataStore(null, Dir(), new FakeClock());
+        var import = new KhataImport(store, new HttpClient(net), new FakeClock());
+        await import.RunOlx(CancellationToken.None);
+        Assert.Equal(2, net.Asked.Count);                                              // перша тема й перша ж відмова
+        Assert.True(Assert.Single(store.Live).Dream);
         Assert.Contains("відмовив", import.Olx.Message);
     }
 
@@ -336,6 +441,52 @@ public class KhataOlxTests
         own.Join("Петро");
         own.Start();
         Assert.Equal(4, own.View(0).GetProperty("of").GetInt32());                     // усі з акаунтами — три з OLX і Рига
+    }
+
+    [Fact]
+    public void In_dream_homes_every_third_flat_has_a_price_nobody_expects()
+    {
+        var store = new KhataStore(null, Dir(), new FakeClock());
+        var flats = new List<KhataExternal>();
+        for (var i = 0; i < 40; i++)
+            flats.Add(new KhataExternal("d" + i, i % 2 == 0 ? KhataRegions.Eu : KhataRegions.World, "Місто мрії " + i, 100 + i, KhataFlat.Night,
+                [$"https://a0.muscache.com/im/pictures/d{i}-cover.jpg"], "https://www.airbnb.com/rooms/" + i, null, Dream: true, Odd: i % 5 == 0));
+        for (var i = 0; i < 40; i++)
+            flats.Add(new KhataExternal("p" + i, KhataRegions.Eu, "Звичайне місто " + i, 80, KhataFlat.Night,
+                [$"https://a0.muscache.com/im/pictures/p{i}-cover.jpg"], "https://www.airbnb.com/rooms/9" + i, null));
+        store.Import(KhataSources.Airbnb, flats);
+        Assert.Equal((80, 40), (store.CountFit(null), store.CountFit(null, dream: true)));
+
+        const string Name = "Місто мрії ";
+        foreach (var (count, odd) in new[] { (3, 1), (5, 2), (7, 2), (10, 3) })
+            for (var seed = 1; seed <= 3; seed++)
+            {
+                var h = new RoomHarness("khata", options: new { flats = count.ToString(), pick = "dream" }, services: RoomHarness.WithService(store), seed: seed);
+                h.Join("Оля");
+                Assert.True(h.Start().Ok);
+                var cities = new List<string>();
+                for (var round = 0; round < count; round++)
+                {
+                    Until(h, "ask");
+                    cities.Add(h.View(0).GetProperty("city").GetString()!);
+                    Until(h, round < count - 1 ? "between" : "done");
+                }
+                Assert.All(cities, c => Assert.StartsWith(Name, c));                                // лише «мрії»
+                Assert.Equal(odd, cities.Count(c => int.Parse(c[Name.Length..]) % 5 == 0));         // і кожна третя — з несподіваною ціною
+            }
+
+        // «мрій» із несподіваною ціною нема — партія однаково збирається; самі несподівані — теж
+        var few = new KhataStore(null, Dir(), new FakeClock());
+        few.Import(KhataSources.Airbnb, [.. flats.Where(f => f.Odd).Take(3)]);
+        var all = new RoomHarness("khata", options: new { flats = "3", pick = "dream" }, services: RoomHarness.WithService(few), seed: 1);
+        all.Join("Оля");
+        Assert.True(all.Start().Ok);
+        Assert.Equal(3, all.View(0).GetProperty("of").GetInt32());
+
+        // а де «мрій» нема — чесно кажемо до старту
+        var none = new RoomHarness("khata", options: new { pick = "dream", region = "ua" }, services: RoomHarness.WithService(store), seed: 1);
+        none.Join("Оля");
+        Assert.False(none.Start().Ok);
     }
 
     [Fact]

@@ -50,14 +50,22 @@ public sealed class Khata : Game
             new GameOption("flats", "Квартир", [.. FlatChoices.Select(n => (Str(n), Str(n)))], Str(Flats)),
             new GameOption("seconds", "Час на відповідь", [.. SecondChoices.Select(n => (Str(n), $"{n} с"))], Str(AskSeconds)),
             new GameOption("region", "Міста", KhataRegions.Choices, KhataRegions.Any, Multi: true),
+            new GameOption("pick", "Добірка", [(PickAll, "Усе підряд"), (PickDream, "🏰 Хати мрії")], PickAll),
         ],
-        Hint: "Справжні оголошення: бачиш фото житла й знаєш лише місто — вгадай, скільки воно коштує за місяць чи за ніч. Що ближче — то більше балів, до 1000 за квартиру");
+        Hint: "Справжні оголошення: бачиш фото житла й знаєш лише місто — вгадай, скільки воно коштує. Оренда буває за місяць, буває подобова — що саме, щоразу написано великим над полем. Що ближче — то більше балів, до 1000 за квартиру");
 
     static string Str(int n) => n.ToString(CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// Опція «Добірка»: усе підряд або лише «хати мрії» — замки, цікава архітектура, житло біля моря й озер, вілли з
+    /// басейном. У «мріях» кожна третя квартира партії — з несподіваною ціною (<see cref="KhataFlat.Odd"/>).
+    /// </summary>
+    public const string PickAll = "all", PickDream = "dream";
 
     int _count = Flats;
     int _seconds = AskSeconds;
     IReadOnlySet<string>? _regions;
+    bool _dream;
 
     readonly List<KhataFlat> _flats = [];
     readonly double?[] _answers = new double?[MaxSeats];
@@ -93,6 +101,7 @@ public sealed class Khata : Game
         if (options.TryGetValue("seconds", out var s) && int.TryParse(s, CultureInfo.InvariantCulture, out var sec)
             && SecondChoices.Contains(sec)) _seconds = sec;
         if (options.TryGetValue("region", out var r)) _regions = KhataRegions.Parse(r);
+        _dream = options.TryGetValue("pick", out var p) && p == PickDream;
     }
 
     KhataStore? Store => _store ??= Ctx.Services.GetService<KhataStore>();
@@ -103,7 +112,9 @@ public sealed class Khata : Game
         (_seen ??= GameSeen.Of(Ctx.Services)).Prefetch(GameId);
         if (Store is not { } store || store.Live.Count == 0)
             return "У банку ще нема жодної квартири — додай першу кнопкою «🏠 Додати квартиру»";
-        return store.CountFit(_regions) == 0 ? "Для цих міст квартир у банку ще нема — обери «Усі міста» або додай свою" : null;
+        if (store.CountFit(_regions) == 0) return "Для цих міст квартир у банку ще нема — обери «Усі міста» або додай свою";
+        return _dream && store.CountFit(_regions, dream: true) == 0
+            ? "«Хат мрії» для цих міст у банку ще нема — обери «Усе підряд» або набери світ чи OLX" : null;
     }
 
     public override void Start()
@@ -144,7 +155,7 @@ public sealed class Khata : Game
     /// </summary>
     List<KhataFlat> Pick()
     {
-        var pool = Store?.Fit(_regions) ?? [];
+        var pool = Store?.Fit(_regions, _dream) ?? [];
         // Оголошення OLX — лише для столів, де всі свої (з акаунтами): гра внутрішня, гостеві з вулиці їх не показуємо.
         if (GuestAtTable()) pool.RemoveAll(f => f.Source == KhataSources.Olx);
         for (var i = pool.Count - 1; i > 0; i--)
@@ -160,26 +171,43 @@ public sealed class Khata : Game
         // Регіони — по черзі (Україна, Європа, світ; порядок випадковий): десять тисяч оголошень світу не мають затоптати
         // кількасот українських. У кожному регіоні — від найсвіжішого. Не більше однієї квартири з міста на партію, поки
         // міст вистачає: п'ять Парижів поспіль — це вже не гра, а завчання.
-        var queues = others.GroupBy(f => f.Region, StringComparer.Ordinal).Select(g => new Queue<KhataFlat>(g)).ToList();
-        for (var i = queues.Count - 1; i > 0; i--)
-        {
-            var j = Ctx.Rng.Next(i + 1);
-            (queues[i], queues[j]) = (queues[j], queues[i]);
-        }
         var picked = new List<KhataFlat>(_count);
         var cities = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var spare = new List<KhataFlat>();
-        while (picked.Count < _count && queues.Any(q => q.Count > 0))
-            foreach (var q in queues)
+        void Draw(IEnumerable<KhataFlat> from, int upTo)
+        {
+            var queues = from.GroupBy(f => f.Region, StringComparer.Ordinal).Select(g => new Queue<KhataFlat>(g)).ToList();
+            for (var i = queues.Count - 1; i > 0; i--)
             {
-                if (picked.Count == _count) break;
-                while (q.Count > 0)
-                {
-                    var f = q.Dequeue();
-                    if (cities.Add(f.City)) { picked.Add(f); break; }
-                    spare.Add(f);
-                }
+                var j = Ctx.Rng.Next(i + 1);
+                (queues[i], queues[j]) = (queues[j], queues[i]);
             }
+            while (picked.Count < upTo && queues.Any(q => q.Count > 0))
+                foreach (var q in queues)
+                {
+                    if (picked.Count >= upTo) break;
+                    while (q.Count > 0)
+                    {
+                        var f = q.Dequeue();
+                        if (cities.Add(f.City)) { picked.Add(f); break; }
+                        spare.Add(f);
+                    }
+                }
+        }
+        if (!_dream) Draw(others, _count);
+        else
+        {
+            // «Хати мрії»: кожна третя — з ціною, якої ніхто не чекає (KhataFlat.Odd), решта — просто цікаві. Наприкінці
+            // тасуємо: «підступна» не мусить щоразу йти першою.
+            Draw(others.Where(f => f.Odd), Math.Min(_count, (int)Math.Round(_count / 3.0, MidpointRounding.AwayFromZero)));
+            Draw(others.Where(f => !f.Odd), _count);
+            Draw(others.Where(f => f.Odd && !picked.Contains(f) && !spare.Contains(f)), _count);
+            for (var i = picked.Count - 1; i > 0; i--)
+            {
+                var j = Ctx.Rng.Next(i + 1);
+                (picked[i], picked[j]) = (picked[j], picked[i]);
+            }
+        }
         // Міст забракло — добираємо повторами, а коли й того мало — квартирами тих, хто за столом (автор свою пропустить).
         foreach (var f in spare.Concat(mine))
         {
@@ -432,7 +460,7 @@ public sealed class Khata : Game
                 best = r.Best >= 0 ? r.Best : (int?)null, value = r.Value, points = r.Points,
             }).ToArray(),
             // Скільки квартир у банку для обраних міст і всього — для лобі.
-            bank = new { fit = store?.CountFit(_regions) ?? 0, total = store?.Live.Count ?? 0 },
+            bank = new { fit = store?.CountFit(_regions, _dream) ?? 0, total = store?.Live.Count ?? 0 },
         };
     }
 

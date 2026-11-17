@@ -76,14 +76,21 @@ public static class KhataSources
 /// Квартира банку «Здам хату»: місто (єдине, що гравець бачить текстом), ціна, фото, хто й коли додав і стан:
 /// <c>pending</c> — чекає на схвалення, <c>ok</c> — у грі. Своя (<see cref="KhataSources.Own"/>) — фото це імена файлів у
 /// <c>data/khata</c>, ціна за місяць. Зовнішня — фото це адреси на сайті-джерелі, <see cref="Link"/> — саме оголошення,
-/// <see cref="About"/> — що це за житло (показуємо лише після відповіді), <see cref="Per"/> — за місяць чи за ніч.
+/// <see cref="About"/> — що це за житло (показуємо лише після відповіді), <see cref="Per"/> — за місяць чи за ніч (добу).
+/// <see cref="Dream"/> — «хата мрії» (замок, цікава архітектура, море, озеро…), <see cref="Odd"/> — ціна несподівана.
 /// </summary>
 public sealed record KhataFlat(long Id, string Region, string City, int Price, IReadOnlyList<string> Photos, string Author,
     DateTimeOffset At, string Status, string Source = KhataSources.Own, string ExtId = "", string? Link = null,
-    string Per = KhataFlat.Month, string? About = null)
+    string Per = KhataFlat.Month, string? About = null, bool Dream = false, bool Odd = false)
 {
     public const string Pending = "pending", Ok = "ok";
     public const string Month = "month", Night = "night";
+
+    /// <summary>
+    /// Ціна, якої ніхто не чекає: щонайменше вдвічі нижча за звичайну для цього місця або щонайменше втричі вища.
+    /// На таких усі за столом і помиляються — у «Хатах мрії» кожна третя саме така (<see cref="Odd"/>).
+    /// </summary>
+    public static bool IsOdd(int price, int typical) => typical > 0 && (price * 2L <= typical || price >= typical * 3L);
     /// <summary>Ключ для пам'яті «хто що бачив» (<see cref="GameSeen"/>).</summary>
     public string Key => "f" + Id.ToString(CultureInfo.InvariantCulture);
     public string Unit => KhataRegions.Unit(Region);
@@ -97,7 +104,7 @@ public sealed record KhataFlat(long Id, string Region, string City, int Price, I
 
 /// <summary>Оголошення зі стороннього джерела — те, що імпорт віддає банку.</summary>
 public sealed record KhataExternal(string ExtId, string Region, string City, int Price, string Per, IReadOnlyList<string> Photos,
-    string Link, string? About);
+    string Link, string? About, bool Dream = false, bool Odd = false);
 
 /// <summary>Відповідь на дію з квартирою: чи вдалось, що сказати людині, і сама квартира.</summary>
 public sealed record KhataReply(bool Ok, string Message, KhataFlat? Flat = null);
@@ -137,6 +144,8 @@ public sealed partial class KhataStore
         ("link", "TEXT"),
         ("per", "TEXT NOT NULL DEFAULT 'month'"),
         ("about", "TEXT"),
+        ("dream", "INTEGER NOT NULL DEFAULT 0"),
+        ("odd", "INTEGER NOT NULL DEFAULT 0"),
     ];
 
     [GeneratedRegex("^[0-9a-f]{20}\\.(jpg|png|webp)$")]
@@ -155,6 +164,7 @@ public sealed partial class KhataStore
     volatile KhataFlat[] _live = [];
     volatile IReadOnlyDictionary<string, int> _byRegion = new Dictionary<string, int>();
     volatile IReadOnlyDictionary<string, int> _bySource = new Dictionary<string, int>();
+    volatile IReadOnlyDictionary<string, int> _dreamByRegion = new Dictionary<string, int>();
 
     /// <summary>Нарахувати автору за схвалену квартиру (нік, скільки, ref). Ставить DI з Economy; тести — свою.</summary>
     public Action<string, int, string>? Reward { get; set; }
@@ -181,7 +191,7 @@ public sealed partial class KhataStore
                     Exec(c, "CREATE INDEX IF NOT EXISTS khata_flats_ext ON khata_flats(source, ext_id)");
 
                     var list = new List<KhataFlat>();
-                    using (var cmd = Cmd(c, "SELECT id, region, city, price, photos, author, at, status, source, ext_id, link, per, about FROM khata_flats WHERE removed = 0 ORDER BY id"))
+                    using (var cmd = Cmd(c, "SELECT id, region, city, price, photos, author, at, status, source, ext_id, link, per, about, dream, odd FROM khata_flats WHERE removed = 0 ORDER BY id"))
                     using (var r = cmd.ExecuteReader())
                         while (r.Read())
                         {
@@ -190,7 +200,7 @@ public sealed partial class KhataStore
                             if (photos.Count == 0) continue;
                             list.Add(new KhataFlat(r.GetInt64(0), r.GetString(1), r.GetString(2), r.GetInt32(3), photos, r.GetString(5),
                                 Ts(r.GetString(6)), r.GetString(7), source, r.GetString(9), r.IsDBNull(10) ? null : r.GetString(10),
-                                r.GetString(11), r.IsDBNull(12) ? null : r.GetString(12)));
+                                r.GetString(11), r.IsDBNull(12) ? null : r.GetString(12), r.GetInt64(13) != 0, r.GetInt64(14) != 0));
                         }
                     using (var cmd = Cmd(c, "SELECT source, ext_id FROM khata_flats WHERE removed = 1 AND source <> 'own'"))
                     using (var r = cmd.ExecuteReader())
@@ -213,6 +223,7 @@ public sealed partial class KhataStore
         var live = _all.Where(f => f.Live).ToArray();
         _byRegion = live.GroupBy(f => f.Region, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.Count(), StringComparer.Ordinal);
         _bySource = live.GroupBy(f => f.Source, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.Count(), StringComparer.Ordinal);
+        _dreamByRegion = live.Where(f => f.Dream).GroupBy(f => f.Region, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.Count(), StringComparer.Ordinal);
         _live = live;
     }
 
@@ -234,13 +245,19 @@ public sealed partial class KhataStore
     /// <summary>Квартири в грі — те, з чого вона набирає партію.</summary>
     public IReadOnlyList<KhataFlat> Live => _live;
 
-    /// <summary>Квартири обраних регіонів (null — усі).</summary>
-    public List<KhataFlat> Fit(IReadOnlySet<string>? regions) =>
-        [.. _live.Where(f => regions is null || regions.Contains(f.Region))];
+    /// <summary>Квартири обраних регіонів (null — усі); <paramref name="dream"/> — лише «хати мрії».</summary>
+    public List<KhataFlat> Fit(IReadOnlySet<string>? regions, bool dream = false) =>
+        [.. _live.Where(f => (regions is null || regions.Contains(f.Region)) && (!dream || f.Dream))];
 
     /// <summary>Скільки їх — без копіювання списку: вид кімнати питає це на кожну розсилку.</summary>
-    public int CountFit(IReadOnlySet<string>? regions) =>
-        regions is null ? _live.Length : regions.Sum(r => _byRegion.GetValueOrDefault(r));
+    public int CountFit(IReadOnlySet<string>? regions, bool dream = false)
+    {
+        var by = dream ? _dreamByRegion : _byRegion;
+        return regions is null ? by.Values.Sum() : regions.Sum(r => by.GetValueOrDefault(r));
+    }
+
+    /// <summary>Скільки в грі «хат мрії» з кожного регіону.</summary>
+    public IReadOnlyDictionary<string, int> DreamByRegion => _dreamByRegion;
 
     /// <summary>Скільки квартир у грі з кожного регіону й з кожного джерела.</summary>
     public IReadOnlyDictionary<string, int> ByRegion => _byRegion;
@@ -278,9 +295,9 @@ public sealed partial class KhataStore
                 var clean = it with { City = city! };
                 if (!known.TryGetValue(it.ExtId, out var was)) fresh.Add(clean);
                 else if (was.Region != clean.Region || was.City != clean.City || was.Price != clean.Price || was.Per != clean.Per
-                    || was.Link != clean.Link || was.About != clean.About || !was.Photos.SequenceEqual(clean.Photos))
+                    || was.Link != clean.Link || was.About != clean.About || was.Dream != clean.Dream || was.Odd != clean.Odd || !was.Photos.SequenceEqual(clean.Photos))
                     changed.Add(was with { Region = clean.Region, City = clean.City, Price = clean.Price, Per = clean.Per,
-                        Link = clean.Link, About = clean.About, Photos = clean.Photos });
+                        Link = clean.Link, About = clean.About, Photos = clean.Photos, Dream = clean.Dream, Odd = clean.Odd });
             }
 
             var ids = new long[fresh.Count];
@@ -298,18 +315,18 @@ public sealed partial class KhataStore
                             {
                                 var f = fresh[i];
                                 Exec(c, """
-                                    INSERT INTO khata_flats(region, city, price, photos, author, author_key, at, status, source, ext_id, link, per, about)
-                                    VALUES($r, $c, $p, $ph, $a, $k, $at, 'ok', $s, $e, $l, $per, $ab)
+                                    INSERT INTO khata_flats(region, city, price, photos, author, author_key, at, status, source, ext_id, link, per, about, dream, odd)
+                                    VALUES($r, $c, $p, $ph, $a, $k, $at, 'ok', $s, $e, $l, $per, $ab, $d, $o)
                                     """,
                                     ("$r", f.Region), ("$c", f.City), ("$p", f.Price), ("$ph", JsonSerializer.Serialize(f.Photos)), ("$a", label),
-                                    ("$k", source), ("$at", Iso(at)), ("$s", source), ("$e", f.ExtId), ("$l", f.Link), ("$per", f.Per), ("$ab", f.About));
+                                    ("$k", source), ("$at", Iso(at)), ("$s", source), ("$e", f.ExtId), ("$l", f.Link), ("$per", f.Per), ("$ab", f.About), ("$d", f.Dream ? 1 : 0), ("$o", f.Odd ? 1 : 0));
                                 using var cmd = Cmd(c, "SELECT last_insert_rowid()");
                                 ids[i] = (long)cmd.ExecuteScalar()!;
                             }
                             foreach (var f in changed)
-                                Exec(c, "UPDATE khata_flats SET region = $r, city = $c, price = $p, photos = $ph, link = $l, per = $per, about = $ab WHERE id = $id",
+                                Exec(c, "UPDATE khata_flats SET region = $r, city = $c, price = $p, photos = $ph, link = $l, per = $per, about = $ab, dream = $d, odd = $o WHERE id = $id",
                                     ("$r", f.Region), ("$c", f.City), ("$p", f.Price), ("$ph", JsonSerializer.Serialize(f.Photos)), ("$l", f.Link),
-                                    ("$per", f.Per), ("$ab", f.About), ("$id", f.Id));
+                                    ("$per", f.Per), ("$ab", f.About), ("$d", f.Dream ? 1 : 0), ("$o", f.Odd ? 1 : 0), ("$id", f.Id));
                             Exec(c, "COMMIT");
                         }
                         catch
@@ -332,7 +349,7 @@ public sealed partial class KhataStore
             for (var i = 0; i < fresh.Count; i++)
             {
                 var f = fresh[i];
-                next.Add(new KhataFlat(ids[i], f.Region, f.City, f.Price, f.Photos, label, at, KhataFlat.Ok, source, f.ExtId, f.Link, f.Per, f.About));
+                next.Add(new KhataFlat(ids[i], f.Region, f.City, f.Price, f.Photos, label, at, KhataFlat.Ok, source, f.ExtId, f.Link, f.Per, f.About, f.Dream, f.Odd));
             }
             _all = next;
             Publish();

@@ -65,7 +65,19 @@
 }
 .khin { flex: 1 1 130px; font-size: 1.15em; font-variant-numeric: tabular-nums; text-align: center; }
 .khin:focus, .khform input:focus, .khfe input:focus { outline: none; border-color: var(--accent2); }
-.khunit { flex: none; }
+.khunit { flex: none; font-weight: 600; }
+/* за що ціна — місяць чи доба: великим, щоб не написати місячну за подобову */
+.khper { display: flex; gap: 4px 12px; align-items: center; justify-content: center; flex-wrap: wrap; text-align: center; font-size: 1.05em; }
+.khper b {
+  padding: 3px 14px; border: 2px solid; border-radius: 999px; color: var(--text); font-size: 1.2em; letter-spacing: .04em;
+  text-transform: uppercase; white-space: nowrap;
+}
+.khper b.month { border-color: #4f9cf0; background: rgba(79, 156, 240, .18); }
+.khper b.night { border-color: #f0a030; background: rgba(240, 160, 48, .24); }
+.khper b.flip { animation: khperflip .55s ease-in-out 3; }
+.khper i { flex: 1 0 100%; font-style: normal; font-weight: 600; }
+@keyframes khperflip { 50% { transform: scale(1.08); } }
+@media (prefers-reduced-motion: reduce) { .khper b.flip { animation: none; } }
 .khgo { flex: none; }
 .khmy { text-align: center; min-height: 1.1em; }
 .khprevw { text-align: center; color: var(--accent); font-variant-numeric: tabular-nums; margin-top: -4px; }
