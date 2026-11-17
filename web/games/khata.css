@@ -1,0 +1,196 @@
+/*
+  «Здам хату». Кольори — тільки змінними: спільні зі style.css, свої оголошені тут на :root.
+*/
+:root {
+  --khrow: rgba(244, 197, 66, .12);   /* рядок, що взяв бали: те саме золото, що й акцент */
+}
+
+/* Картка міряє себе сама (container-type): де є місце — рахунок праворуч, де нема — під таблицею. */
+.khwrap {
+  container-type: inline-size;
+  display: flex; flex-wrap: wrap; gap: 10px; width: 100%; align-items: flex-start;
+}
+.khmain { flex: 1 1 220px; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+.khmain > :empty { display: none; }
+@media (max-height: 500px) { .khmain { gap: 6px; } .khtop { min-height: 40px; } }
+
+.khtop { display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 46px; }
+.khtop[hidden] { display: none; }
+.khno { letter-spacing: .6px; }
+
+/* ---- фото квартири ---- */
+/* Рамка — рівно по фото (fit-content): стрілки й крапки лягають на саме фото, а не на краї картки. */
+.khphoto { position: relative; width: fit-content; max-width: 100%; margin: 0 auto; touch-action: pan-y; user-select: none; }
+.khphoto[hidden] { display: none; }
+.khphoto img {
+  display: block; margin: 0 auto; max-width: 100%; max-height: min(52vh, 460px); min-height: 120px; object-fit: contain;
+  border-radius: 10px; background: var(--panel2, rgba(127, 127, 127, .12)); cursor: zoom-in; -webkit-user-drag: none;
+}
+/* Висота фото — від місця картки (каркас: --g-ah), а не від вікна: місто, поле й гравці лишаються на екрані. */
+.gtable .khphoto img { max-height: clamp(150px, calc(var(--g-ah, 700px) - 250px), 680px); } /* 250 — номер, місто, поле, гравці */
+@media (max-height: 700px) { .khphoto img { min-height: 90px; } }
+.khprev, .khnext, .khvprev, .khvnext, .khvclose {
+  position: absolute; display: grid; place-items: center; width: 40px; height: 40px; padding: 0; border: 0; border-radius: 50%;
+  background: rgba(0, 0, 0, .55); color: #fff; font-size: 24px; line-height: 1; cursor: pointer;
+}
+.khprev, .khnext { top: 50%; transform: translateY(-50%); }
+.khprev { left: 6px; }
+.khnext { right: 6px; }
+.khprev:hover, .khnext:hover, .khvprev:hover, .khvnext:hover, .khvclose:hover { background: rgba(0, 0, 0, .8); }
+.khdots { position: absolute; left: 0; right: 0; bottom: 8px; display: flex; gap: 5px; justify-content: center; pointer-events: none; }
+.khdots i { width: 7px; height: 7px; border-radius: 50%; background: rgba(255, 255, 255, .5); box-shadow: 0 0 2px rgba(0, 0, 0, .6); }
+.khdots i.on { background: #fff; }
+
+/* Перегляд на весь екран (лежить у body). */
+.khview { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; background: rgba(0, 0, 0, .88); touch-action: pan-y; user-select: none; }
+.khview img { max-width: 96vw; max-height: 92vh; object-fit: contain; border-radius: 8px; cursor: zoom-out; -webkit-user-drag: none; }
+.khvprev, .khvnext { top: 50%; transform: translateY(-50%); width: 48px; height: 48px; font-size: 28px; }
+.khvprev { left: 10px; }
+.khvnext { right: 10px; }
+.khvclose { top: 10px; right: 10px; font-size: 18px; }
+.khvno { position: absolute; left: 0; right: 0; bottom: 12px; text-align: center; color: #fff; font-size: .9em; pointer-events: none; }
+
+/* ---- місто й поле ---- */
+.khcity {
+  text-align: center; font-size: clamp(1.3em, calc(var(--g-aw, 600px) * .03), 2.2em); line-height: 1.25; font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.khcity.wait { color: var(--muted); font-weight: 400; font-size: 1em; min-height: 2.4em; display: grid; place-items: center; }
+.khrules { text-align: center; line-height: 1.4; max-width: 36em; margin: 0 auto; }
+.khown { text-align: center; font-weight: 600; color: var(--accent); }
+
+.khask { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; justify-content: center; }
+.khin, .khform input[type=text], .khfe input, .khfe select {
+  min-width: 0; padding: 9px 12px; background: var(--bg2); color: var(--text); border: 1px solid var(--line); border-radius: 10px;
+}
+.khin { flex: 1 1 130px; font-size: 1.15em; font-variant-numeric: tabular-nums; text-align: center; }
+.khin:focus, .khform input:focus, .khfe input:focus { outline: none; border-color: var(--accent2); }
+.khunit { flex: none; }
+.khgo { flex: none; }
+.khmy { text-align: center; min-height: 1.1em; }
+.khprevw { text-align: center; color: var(--accent); font-variant-numeric: tabular-nums; margin-top: -4px; }
+.khprevw.bad { color: var(--danger); }
+
+/* ---- підсумок партії вгорі ---- */
+.khpod { text-align: center; display: flex; flex-direction: column; gap: 4px; padding: 6px 0 2px; }
+.khpodt { font-size: 1.2em; line-height: 1.35; }
+.khpodt b { color: var(--accent); }
+.khpods { font-size: .95em; }
+
+/* ---- розкриття ---- */
+.khans { display: flex; align-items: baseline; justify-content: center; gap: 8px; flex-wrap: wrap; }
+.khans b { font-size: 1.6em; color: var(--accent); font-variant-numeric: tabular-nums; }
+.khans i { font-style: normal; color: var(--muted); font-size: .9em; }
+.khby { text-align: center; margin-top: 2px; }
+.khrows { display: flex; flex-direction: column; gap: 3px; margin-top: 8px; }
+.khrow {
+  position: relative; overflow: hidden; display: flex; align-items: center; gap: 8px; padding: 5px 9px;
+  background: var(--panel); border-radius: 8px; font-size: .92em;
+}
+/* смужка за рядком — частка від 1000 балів: видно, хто наскільки близько, ще до читання чисел */
+.khrow::before { content: ''; position: absolute; inset: 0 auto 0 0; width: var(--p, 0%); background: var(--khrow); pointer-events: none; }
+.khrow > * { position: relative; }
+.khrow.best { box-shadow: 0 0 0 1px var(--accent2) inset; }
+.khn { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.khv { font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; }
+.khd { flex: none; white-space: nowrap; }
+.khp { flex: none; min-width: 3em; text-align: right; color: var(--accent); font-weight: 600; font-variant-numeric: tabular-nums; }
+.khrow:not(.on) .khp { color: var(--muted); font-weight: 400; }
+
+.khans b { display: inline-block; animation: khpop .45s cubic-bezier(.2, 1.6, .4, 1) both; }
+.khrow { animation: khrise .35s ease-out both; animation-delay: calc(.25s + var(--n, 0) * .12s); }
+@keyframes khpop { from { transform: scale(.4); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes khrise { from { transform: translateY(6px); opacity: 0; } to { transform: none; opacity: 1; } }
+.khsay {
+  display: flex; align-items: center; gap: 8px; margin-top: 8px; padding: 6px 10px;
+  background: #2a2210; border: 1px solid #4a3a12; border-radius: 10px; font-size: .9em;
+  animation: khrise .35s ease-out both; animation-delay: .9s;
+}
+.khsay img { width: 24px; height: 24px; flex: none; }
+@media (prefers-reduced-motion: reduce) { .khans b, .khrow, .khsay { animation: none; } }
+
+/* ---- «Як це було» ---- */
+.khrecap { background: var(--panel); border-radius: 10px; padding: 6px 10px; }
+.khrecap summary { cursor: pointer; color: var(--muted); font-size: .88em; padding: 2px 0; }
+.khrecap ol { margin: 6px 0 2px; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
+.khrecap li { display: flex; gap: 10px; align-items: center; font-size: .9em; line-height: 1.3; }
+.khrecap li img { flex: none; width: 64px; height: 48px; object-fit: cover; border-radius: 6px; background: var(--panel2, rgba(127, 127, 127, .12)); }
+.khrc { min-width: 0; }
+.khra { color: var(--accent); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.khrb { display: block; color: var(--muted); }
+.khrb b { color: var(--ok); font-weight: 600; }
+
+/* ---- хто вже відповів ---- */
+.khwho { display: flex; gap: 5px; flex-wrap: wrap; justify-content: center; }
+.khchip {
+  padding: 3px 9px; border-radius: 999px; font-size: .82em; color: var(--muted);
+  border: 1px dashed var(--line); max-width: 46%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.khchip.on { color: var(--ok); border-style: solid; border-color: var(--ok); }
+
+/* ---- рахунок партії ---- */
+.khscore { flex: 1 1 100%; display: flex; flex-direction: column; gap: 2px; }
+.khscore:empty { display: none; }
+.khsrow { display: flex; align-items: center; gap: 8px; padding: 3px 9px; font-size: .88em; color: var(--muted); border-radius: 8px; }
+.khsrow > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.khsrow b { color: var(--text); font-variant-numeric: tabular-nums; }
+.khshard { font-style: normal; font-size: .9em; color: var(--accent); white-space: nowrap; }
+.khsrow.win { color: var(--text); background: var(--khrow); }
+@container (min-width: 560px) {
+  .khscore { flex: 0 0 160px; padding-left: 12px; border-left: 1px solid var(--line); }
+}
+
+/* ---- банк квартир ---- */
+.khbank { display: flex; flex-direction: column; gap: 8px; padding: 10px; background: var(--panel); border-radius: 12px; }
+.khbank[hidden] { display: none; }
+.khbh { display: flex; align-items: center; justify-content: space-between; gap: 8px 12px; flex-wrap: wrap; }
+.khform { display: flex; flex-direction: column; gap: 8px; padding: 10px; background: var(--bg2); border: 1px solid var(--line); border-radius: 10px; }
+.khfrow { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.khfrow input[type=text] { flex: 1 1 140px; }
+.khreg {
+  flex: 1 1 auto; min-height: 40px; padding: 6px 10px; border-radius: 999px; border: 1px solid var(--line);
+  background: transparent; color: var(--muted); cursor: pointer; white-space: nowrap;
+}
+.khreg.on { border-color: var(--accent); color: var(--text); background: var(--khrow); }
+.khfunit { flex: none; color: var(--muted); }
+.khfphotos { display: flex; gap: 6px; flex-wrap: wrap; }
+.khfp { position: relative; width: 84px; height: 64px; }
+.khfp img { width: 100%; height: 100%; object-fit: cover; border-radius: 8px; display: block; }
+.khfp button {
+  position: absolute; top: -6px; right: -6px; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 50%;
+  background: var(--danger); color: #fff; font-size: 12px; line-height: 1; cursor: pointer;
+}
+.khfadd {
+  width: 84px; height: 64px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 0;
+  border: 1px dashed var(--line); border-radius: 8px; background: transparent; color: var(--muted); font-size: 20px; cursor: pointer;
+}
+.khfadd small { font-size: 10.5px; }
+.khfadd:hover { border-color: var(--accent2); color: var(--text); }
+.khfbtns { justify-content: flex-end; }
+
+.khlist summary { cursor: pointer; font-weight: 600; min-height: 32px; display: flex; align-items: center; }
+.khfl { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-top: 1px solid var(--line); }
+.khfth { position: relative; flex: none; width: 76px; height: 57px; padding: 0; border: 0; border-radius: 8px; overflow: hidden; background: var(--panel2, rgba(127, 127, 127, .12)); cursor: zoom-in; }
+.khfth img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.khfth i {
+  position: absolute; right: 3px; bottom: 3px; padding: 0 5px; border-radius: 8px; background: rgba(0, 0, 0, .65); color: #fff;
+  font-style: normal; font-size: 11px; line-height: 16px;
+}
+.khfi { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.khfi b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.khfi > span { font-variant-numeric: tabular-nums; }
+.khfa { flex: none; display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
+.khfa button { min-height: 36px; }
+.khfe { flex: 1; min-width: 0; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.khfe input { flex: 1 1 110px; }
+
+/* ---- телефон: кнопка під полем, нічого не вилазить за 375 px ---- */
+@media (max-width: 420px) {
+  .khin { flex: 1 1 100%; }
+  .khgo { flex: 1 1 100%; justify-content: center; }
+  .khunit { order: -1; width: 100%; text-align: center; }
+  .khchip { max-width: 100%; }
+  .khrow { gap: 6px; padding: 5px 7px; font-size: .86em; }
+  .khfl { flex-wrap: wrap; }
+  .khfa { flex: 1 1 100%; }
+}

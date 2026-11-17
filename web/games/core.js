@@ -130,7 +130,7 @@
     party: [
       { id: 'draw', title: 'Слова й малюнки', icon: '✏', ids: ['pictionary', 'telephone', 'hangman', 'wordle-race', 'pozyvni', 'dotepy'] },
       { id: 'bluff', title: 'Блеф і вечірка', icon: '🕵', ids: ['mafia', 'spy', 'skarb', 'bluff', 'dice', 'vechirka', 'oblup'] },
-      { id: 'quiz', title: 'Вікторини', icon: '🧠', ids: ['svoya', 'melody', 'skilky', 'geo', 'memy', 'geese'] },
+      { id: 'quiz', title: 'Вікторини', icon: '🧠', ids: ['svoya', 'melody', 'skilky', 'khata', 'geo', 'memy', 'geese'] },
     ],
     solo: [
       { id: 'self', title: 'Сам собі', icon: '🏺', ids: ['clicker', 'kakhli', 'namysto', 'shatkuy', 'bricks-sprint', 'typerace-solo', 'geo-solo', 'memy-solo', 'fura'] },
