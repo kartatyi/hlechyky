@@ -29,6 +29,9 @@
   // Без прапорців: Windows не має їх у шрифтах і малює літерами «UA», «EU».
   const REGIONS = [['ua', 'Україна', '₴'], ['eu', 'Європа', '$'], ['world', 'Світ', '$']];
 
+  /// Стіл, що зараз на екрані: клавіші-стрілки приходять без кореня (onKey), а гортати треба саме його фото.
+  let live = null;
+
   const boostOf = (ctx) => Math.max(1, (ctx && ctx.me && ctx.me.boost) || 1);
   function plural(n, one, few, many) {
     const d = n % 10, h = n % 100;
@@ -41,7 +44,7 @@
   /// Шкала словами — та сама, що Khata.Points на сервері. Міняєш там — міняй і тут.
   function rulesFor(ctx) {
     const k = boostOf(ctx);
-    return 'Оголошення справжні. Оренда буває за місяць, а буває подобова — за добу чи ніч: що саме, щоразу написано великим над полем. '
+    return 'Оголошення справжні. Оренда буває за місяць, а буває подобова — за добу чи ніч: що саме й у якій валюті, щоразу написано в самому полі ціни. '
       + 'Бали за точність, до 1000 за квартиру: промах до 2 % — 1000, на 10 % — близько 800, на чверть — 540, удвічі — 130, '
       + 'утричі — майже нуль. Удвічі дешевше й удвічі дорожче — однаково далеко. '
       + 'За кожні ' + POINTS_PER_SHARD + ' балів за квартири, які бачиш уперше, — 🏺 ' + k + ' ' + plural(k, 'черепок', 'черепки', 'черепків');
@@ -110,26 +113,68 @@
   // фото: карусель на картці й перегляд на весь екран
   // =========================================================================================
 
+  /// Сцена: одне велике фото (ціле, на розмитому тлі з нього ж), стрілки, «3 з 9», під сценою — мініатюри всіх фото.
   function paintPhoto(root, ctx, v) {
     const st = state(root);
     const fig = root.querySelector('.khphoto');
-    const list = (v.phase === 'ask' || v.phase === 'reveal') ? (v.photos || []) : [];
+    const thumbs = root.querySelector('.khthumbs');
+    const shown = v.phase === 'ask' || v.phase === 'reveal';
+    const list = shown ? (v.photos || []) : [];
     const key = list.join('|');
     if (st.key !== key) {
       st.key = key;
       st.idx = 0;
-      // решту фото квартири тягнемо одразу — гортання без білих пауз
+      // решту фото квартири тягнемо одразу — гортання без білих пауз; ті самі адреси йдуть і в мініатюри
       for (const u of list.slice(1)) { const im = new Image(); im.decoding = 'async'; im.referrerPolicy = 'no-referrer'; im.src = u; }
+      setHtml(thumbs, list.length > 1 ? list.map((u, i) => '<button type="button" class="khth" data-i="' + i + '" aria-label="Фото ' + (i + 1) + '">'
+        + '<img src="' + ctx.esc(u) + '" alt="" decoding="async" referrerpolicy="no-referrer"></button>').join('') : '');
+      thumbs.hidden = list.length < 2;
+      // одне фото (чи жодного) — смужки мініатюр нема, і сцена забирає її місце
+      root.querySelector('.khstage').classList.toggle('one', list.length < 2);
     }
-    fig.hidden = !list.length;
-    if (!list.length) return;
-    if (st.idx >= list.length) st.idx = 0;
+    // Фото нема — на сцені слова: «готуйсь» між квартирами або замок для глядача (оголошення OLX — лише тим, хто за столом).
+    // Між квартирами тут-таки й правила: сцена порожня, а під нею вони лише розтягували б картку.
+    const wait = fig.querySelector('.khwait');
+    const waitText = list.length ? '' : shown && v.closed ? '🔒 Це оголошення бачать лише ті, хто сидить за столом'
+      : v.phase === 'between' ? 'Готуйсь — зараз покажуть квартиру…' : '';
+    setHtml(wait, !waitText ? '' : '<b>' + ctx.esc(waitText) + '</b>'
+      + (v.phase === 'between' && !v.result ? '<span>' + ctx.esc(rulesFor(ctx)) + '</span>' : ''));
+    wait.hidden = !waitText;
     const img = fig.querySelector('img');
-    if (img.getAttribute('src') !== list[st.idx]) img.setAttribute('src', list[st.idx]);
+    const bg = fig.querySelector('.khbg');
+    const prev = fig.querySelector('.khprev'), next = fig.querySelector('.khnext'), cnt = fig.querySelector('.khcnt');
+    img.hidden = !list.length;
+    if (!list.length) {
+      bg.style.backgroundImage = '';
+      prev.hidden = next.hidden = cnt.hidden = true;
+      return;
+    }
+    if (st.idx >= list.length) st.idx = 0;
+    const src = list[st.idx];
+    if (img.getAttribute('src') !== src) {
+      img.setAttribute('src', src);
+      bg.style.backgroundImage = 'url("' + src.replace(/["\\\n]/g, '') + '")';
+    }
     const many = list.length > 1;
-    fig.querySelector('.khprev').hidden = !many;
-    fig.querySelector('.khnext').hidden = !many;
-    setHtml(fig.querySelector('.khdots'), many ? list.map((_, i) => '<i' + (i === st.idx ? ' class="on"' : '') + '></i>').join('') : '');
+    prev.hidden = next.hidden = cnt.hidden = !many;
+    const cntText = many ? (st.idx + 1) + ' з ' + list.length : '';
+    if (cnt.textContent !== cntText) cnt.textContent = cntText;
+    thumbs.querySelectorAll('.khth').forEach((b, i) => {
+      const on = i === st.idx;
+      if (b.classList.contains('on') === on) return;
+      b.classList.toggle('on', on);
+      // обрана мініатюра — посередині смужки; саму сторінку при цьому не рухаємо
+      if (on) thumbs.scrollLeft = b.offsetLeft - (thumbs.clientWidth - b.offsetWidth) / 2;
+    });
+  }
+
+  /// Перейти до фото з мініатюри.
+  function pick(root, ctx, i) {
+    const st = state(root);
+    const n = st.key ? st.key.split('|').length : 0;
+    if (!(i >= 0 && i < n) || i === st.idx) return;
+    st.idx = i;
+    paintPhoto(root, ctx, ctx.view || {});
   }
 
   function turn(root, ctx, d) {
@@ -298,10 +343,11 @@
     const raw = (input.value || '').trim();
     const n = raw ? parsePrice(raw) : null;
     const sent = root._kh && root._kh.my;
-    const unit = (root.querySelector('.khunit') || {}).textContent || '';
+    const cur = (root.querySelector('.khcur') || {}).textContent || '';
+    const per = (root.querySelector('.khunit') || {}).textContent || '';
     const text = !raw || input.disabled || (n != null && sent != null && Math.abs(n - sent) < 1e-9) ? ''
       : n == null ? 'Не схоже на ціну — лише цифри: «15000», «15 000» або «15к»'
-      : n >= 10000 || String(n) !== raw ? '= ' + money(n, unit)
+      : n >= 10000 || String(n) !== raw ? '= ' + money(n, cur) + (per ? ' ' + per : '')
       : '';
     if (box.textContent !== text) box.textContent = text;
     box.classList.toggle('bad', !!raw && n == null);
@@ -347,43 +393,33 @@
 
     paintPhoto(root, ctx, v);
 
+    // Поки йде партія — сцена з фото ліворуч і панель праворуч (де вузько — стовпчиком); у лобі й після партії сцени нема.
+    const play = ctx.playing && phase !== 'done';
+    root.querySelector('.khgrid').classList.toggle('play', play);
+    root.querySelector('.khstage').hidden = !play;
+
     const city = root.querySelector('.khcity');
+    // між квартирами й для глядача закритого оголошення (OLX) місто не показуємо — про це каже сама сцена
     const cityText = lobby ? 'Господар тисне «Почати» — можна й самому, а хто встигне, підсяде'
-      : phase === 'between' ? 'Готуйсь — зараз покажуть квартиру…'
-      : phase === 'done' ? ''
-      // оголошення OLX — лише для тих, хто за столом: глядачеві замість фото й міста — оцей рядок
-      : v.closed ? '🔒 Це оголошення бачать лише ті, хто сидить за столом'
-      : (v.city || '');
+      : (phase === 'ask' || phase === 'reveal') && !v.closed ? (v.city || '') : '';
     if (city.textContent !== cityText) city.textContent = cityText;
-    city.classList.toggle('wait', lobby || phase === 'between' || !!v.closed);
+    city.classList.toggle('wait', lobby);
     city.hidden = !cityText;
 
-    // За що ціна й у чому — великим над полем: оренда буває за місяць, а буває подобова, у гривнях чи в доларах.
-    // Щойно це не те, чого чекаєш (перша ж подобова, зміна проти минулої квартири), — значок підморгує й каже словами.
-    const perBox = root.querySelector('.khper');
-    const showPer = ctx.playing && phase === 'ask' && !v.closed && !!v.per;
+    // Валюта й строк живуть у самому полі: знак валюти ліворуч, «за місяць / за добу / за ніч» кольоровим хвостиком
+    // праворуч. Змінилось проти минулої квартири (чи перша ж подобова) — саме той шматок поля раз м'яко підсвічується.
     if (lobby || phase === 'done') st.perRound = null;
-    if (showPer && st.perRound !== v.round) {
+    if (ctx.playing && phase === 'ask' && !v.closed && v.per && st.perRound !== v.round) {
       const first = v.round <= 1 || !st.perWas;
-      const perNew = (first ? 'month' : st.perWas) !== v.per;
-      const unitNew = !first && st.unitWas !== v.unit;
-      const says = [];
-      if (perNew) says.push(v.per === 'night' ? 'не за місяць, а за одну ' + (v.unit === '₴' ? 'добу' : 'ніч') : 'тут уже за цілий місяць');
-      if (unitNew) says.push(v.unit === '₴' ? 'і в гривнях' : 'і в доларах');
-      st.perWarn = says.length ? '⚠ увага: ' + says.join(' — ').replace(/^і в /, 'тепер у ') : '';
+      st.perFlip = (first ? 'month' : st.perWas) !== v.per;
+      st.curFlip = !first && st.unitWas !== v.unit;
       st.perWas = v.per;
       st.unitWas = v.unit;
       st.perRound = v.round;
     }
-    const night = v.per === 'night';
-    const perHtml = !showPer ? '' : '<span>Скільки просять</span><b class="' + (night ? 'night' : 'month') + (st.perWarn ? ' flip' : '') + '">'
-      + (night ? '🌙 ' : '🗓 ') + perText(v.per, v.unit) + ' · ' + ctx.esc(v.unit || '') + '</b>'
-      + (st.perWarn ? '<i>' + st.perWarn + '</i>' : '');
-    setHtml(perBox, perHtml);
-    perBox.hidden = !perHtml;
 
     const rules = root.querySelector('.khrules');
-    rules.hidden = !(lobby || (phase === 'between' && !v.result));
+    rules.hidden = !lobby;   // між квартирами правила — на порожній сцені (paintPhoto)
 
     const own = root.querySelector('.khown');
     const ownText = v.own && phase === 'ask' ? '🏠 Це твоя квартира — ти ціну знаєш, тож мовчиш. Дивись, як мучаться інші 😉' : '';
@@ -403,11 +439,16 @@
       const busy = document.activeElement;
       if (!busy || busy === document.body || !/^(INPUT|TEXTAREA|SELECT)$/.test(busy.tagName)) input.focus();
     }
+    const cur = root.querySelector('.khcur');
+    const curText = v.unit || '';
+    if (cur.textContent !== curText) cur.textContent = curText;
+    const curCls = 'khcur ' + (v.unit === '₴' ? 'uah' : 'usd') + (st.curFlip ? ' flip' : '');
+    if (cur.className !== curCls) cur.className = curCls;
     const unit = root.querySelector('.khunit');
-    const unitText = v.unit ? v.unit + ' ' + perText(v.per, v.unit) : '';
+    const unitText = v.per ? perText(v.per, v.unit) : '';
     if (unit.textContent !== unitText) unit.textContent = unitText;
-    const hint = v.per && phase === 'ask' ? 'ціна ' + perText(v.per, v.unit) : 'твоя ціна';
-    if (input.placeholder !== hint) input.placeholder = hint;
+    const unitCls = 'khunit ' + (v.per === 'night' ? 'night' : 'month') + (st.perFlip ? ' flip' : '');
+    if (unit.className !== unitCls) unit.className = unitCls;
 
     const my = root.querySelector('.khmy');
     const myText = v.my != null && phase === 'ask' ? 'Твоя ціна: ' + money(v.my, v.unit) + ' ' + perText(v.per, v.unit) + '. Можна змінити, поки є час'
@@ -773,30 +814,38 @@
     mount(root, ctx) {
       root._kh = null;
       state(root);
-      root.innerHTML = '<div class="khwrap">'
-        + '<div class="khmain">'
-        + '<div class="khtop"><span class="khno muted small"></span></div>'
+      // Сітка: номер квартири з відліком, підсумок партії, сцена з фото, панель (місто, поле, розкриття, гравці,
+      // рахунок) і низ на всю ширину (правила, «як це було», банк). Де широко й іде партія — сцена ліворуч, панель праворуч.
+      root.innerHTML = '<div class="khwrap"><div class="khgrid">'
+        + '<div class="khtop"><span class="khno muted"></span></div>'
         + '<div class="khpod" hidden></div>'
-        + '<figure class="khphoto" hidden><img alt="Фото квартири" decoding="async">'
+        + '<div class="khstage" hidden>'
+        + '<figure class="khphoto"><div class="khbg"></div><img alt="Фото квартири" decoding="async" hidden>'
         + '<button type="button" class="khprev" aria-label="Попереднє фото" hidden>‹</button>'
         + '<button type="button" class="khnext" aria-label="Наступне фото" hidden>›</button>'
-        + '<div class="khdots"></div></figure>'
+        + '<span class="khcnt" hidden></span><div class="khwait" hidden></div></figure>'
+        + '<div class="khthumbs" hidden></div>'
+        + '</div>'
+        + '<div class="khside">'
         + '<div class="khcity"></div>'
-        + '<div class="khper" hidden></div>'
         + '<div class="khown small" hidden></div>'
-        + '<div class="khrules muted small" hidden>' + rulesFor(ctx) + '</div>'
-        + '<div class="khask" hidden><input class="khin" type="text" inputmode="decimal" enterkeyhint="done" autocomplete="off"'
-        + ' placeholder="твоя ціна" aria-label="Твоя ціна оренди"><span class="khunit"></span>'
+        + '<div class="khask" hidden><div class="khfield"><span class="khcur"></span>'
+        + '<input class="khin" type="text" inputmode="decimal" enterkeyhint="done" autocomplete="off"'
+        + ' placeholder="твоя ціна" aria-label="Твоя ціна оренди"><span class="khunit"></span></div>'
         + '<button type="button" class="primary khgo">Відповісти</button></div>'
         + '<div class="khprevw small" aria-live="polite"></div>'
         + '<div class="khmy muted small"></div>'
         + '<div class="khrev"></div>'
-        + '<div class="khrecapbox"></div>'
         + '<div class="khwho"></div>'
+        + '<div class="khscore"></div>'
+        + '</div>'
+        + '<div class="khrest">'
+        + '<div class="khrules muted small" hidden>' + rulesFor(ctx) + '</div>'
+        + '<div class="khrecapbox"></div>'
         + '<div class="khbank" hidden></div>'
         + '</div>'
-        + '<div class="khscore"></div>'
-        + '</div>';
+        + '</div></div>';
+      live = { root, ctx };
       root.querySelector('.khgo').onclick = () => answer(root, ctx);
       const input = root.querySelector('.khin');
       input.addEventListener('keydown', (e) => {
@@ -829,6 +878,17 @@
         else if (e.target.closest('.khnext')) turn(root, ctx, 1);
         else if (e.target.tagName === 'IMG') { const st = state(root); openViewer(root, st.key ? st.key.split('|') : [], st.idx); }
       });
+      const thumbs = root.querySelector('.khthumbs');
+      thumbs.addEventListener('click', (e) => {
+        const b = e.target.closest('.khth');
+        if (b) pick(root, ctx, +b.dataset.i);
+      });
+      // Мініатюр буває більше, ніж влазить: коліщатко над смужкою їде вбік, а не гортає сторінку.
+      thumbs.addEventListener('wheel', (e) => {
+        if (thumbs.scrollWidth <= thumbs.clientWidth || !e.deltaY || e.ctrlKey) return;
+        e.preventDefault();
+        thumbs.scrollLeft += e.deltaY;
+      }, { passive: false });
       root.querySelector('.khbank').addEventListener('click', (e) => onBank(root, ctx, e));
       root.querySelector('.khbank').addEventListener('toggle', (e) => {
         const d = e.target;
@@ -848,14 +908,24 @@
       paintScores(root, ctx);
     },
 
-    /// Перегляд на весь екран: Esc — закрити, стрілки — гортати.
+    /// Перегляд на весь екран: Esc — закрити, стрілки — гортати. Без нього стрілки гортають фото на сцені — крім
+    /// випадку, коли в полі вже щось написано (там вони рухають курсор) чи людина пише деінде.
     onKey(e, ctx) {
       const box = document.querySelector('.khview');
-      if (!box) return false;
-      if (e.key === 'Escape') { box.click(); return true; }
-      if (e.key === 'ArrowLeft') { box.querySelector('.khvprev').click(); return true; }
-      if (e.key === 'ArrowRight') { box.querySelector('.khvnext').click(); return true; }
-      return false;
+      if (box) {
+        if (e.key === 'Escape') { box.click(); return true; }
+        if (e.key === 'ArrowLeft') { box.querySelector('.khvprev').click(); return true; }
+        if (e.key === 'ArrowRight') { box.querySelector('.khvnext').click(); return true; }
+        return false;
+      }
+      if ((e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return false;
+      if (!live || !live.root.isConnected || live.root.querySelector('.khstage').hidden) return false;
+      const t = e.target;
+      const typing = t && (/^(TEXTAREA|SELECT)$/.test(t.tagName) || t.isContentEditable
+        || (t.tagName === 'INPUT' && !(t.classList.contains('khin') && !t.value)));
+      if (typing || !state(live.root).key.includes('|')) return false;
+      turn(live.root, live.ctx, e.key === 'ArrowLeft' ? -1 : 1);
+      return true;
     },
 
     status(ctx) {
@@ -869,6 +939,7 @@
     },
 
     unmount(root) {
+      if (live && live.root === root) live = null;
       const arc = root.querySelector('.garc');
       if (arc && arc._arc) arc._arc.stop();
       closeViewer(root);
