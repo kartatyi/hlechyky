@@ -36,6 +36,7 @@
   }
   const pts = (n) => num(n) + ' ' + plural(Math.abs(n), 'бал', 'бали', 'балів');
   const flatsWord = (n) => plural(n, 'квартира', 'квартири', 'квартир');
+  const adsWord = (n) => plural(n, 'оголошення', 'оголошення', 'оголошень');
 
   /// Шкала словами — та сама, що Khata.Points на сервері. Міняєш там — міняй і тут.
   function rulesFor(ctx) {
@@ -550,9 +551,9 @@
       const src = b.bySource || {};
       // Звідки квартири — і обов'язкові згадки джерел: Inside Airbnb (CC BY 4.0) і DIM.RIA (умова їхнього API — посилання).
       const from = [];
-      if (src.olx) from.push('з України — ' + num(src.olx) + ' оголошень з OLX: оренда квартир (за місяць) і подобові будинки — біля озер, у горах, «замки» (за добу); з усіма фото, на цей тиждень і лише за столами, де всі з акаунтами');
-      if (src.ria) from.push('з України — ' + num(src.ria) + ' оголошень DIM.RIA (за місяць, з усіма фото)');
-      if (src.airbnb) from.push('зі світу — ' + num(src.airbnb) + ' оголошень Airbnb (за ніч, одне фото)');
+      if (src.olx) from.push('з України — ' + num(src.olx) + ' ' + adsWord(src.olx) + ' з OLX: оренда квартир (за місяць) і подобові будинки — біля озер, у горах, «замки» (за добу); з усіма фото, на цей тиждень і лише за столами, де всі з акаунтами');
+      if (src.ria) from.push('з України — ' + num(src.ria) + ' ' + adsWord(src.ria) + ' DIM.RIA (за місяць, з усіма фото)');
+      if (src.airbnb) from.push('зі світу — ' + num(src.airbnb) + ' ' + adsWord(src.airbnb) + ' Airbnb (за ніч, одне фото)');
       if (src.own) from.push('від гравців — ' + num(src.own));
       const dreams = Object.values(b.dreamByRegion || {}).reduce((n, x) => n + x, 0);
       if (dreams) from.push('серед них «хат мрії» (замки, цікава архітектура, біля моря й озер, вілли з басейном) — ' + num(dreams) + ': для них є добірка в налаштуваннях столу');
