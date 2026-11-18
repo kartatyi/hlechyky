@@ -4066,23 +4066,6 @@
 
   // ---------- library: history / likes / playlists / stats ----------
   $('libTabs').querySelectorAll('button').forEach((b) => b.onclick = () => go('#lib/' + b.dataset.tab));
-  // ТИМЧАСОВО — проби вигляду «Ігор» (прибрати разом зі static/igry-proby.css, щойно вигляд вибрано):
-  //   ?igry=a — «Зараз у небі»: блок «Зараз» стоїть на пейзажі замість назви розділу; ?dnes=1 — спокійне «Сьогодні».
-  (() => {
-    const p = new URLSearchParams(location.search), root = document.documentElement;
-    const igry = p.get('igry') === 'a' ? 'a' : '', dnes = p.get('dnes') === '1' ? '1' : '';
-    if (!igry && !dnes) return;
-    if (igry) root.dataset.igry = igry;
-    if (dnes) root.dataset.dnes = dnes;
-    const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = '/static/igry-proby.css'; document.head.appendChild(css);
-    const box = $('games');
-    const paint = () => {
-      const now = box.querySelector('.gl-now'), on = now && !now.hidden && now.querySelector('.gl-strip') ? '1' : '';
-      if (root.dataset.gnow !== on) root.dataset.gnow = on;
-    };
-    new MutationObserver(paint).observe(box, { subtree: true, childList: true, attributes: true, attributeFilter: ['hidden'] });
-    paint();
-  })();
   /// Шукаємо по тому, що вже на екрані: сервер тут ні до чого, і відповідь миттєва.
   function filterLib() {
     const box = $('lib');

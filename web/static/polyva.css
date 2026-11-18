@@ -793,3 +793,32 @@ section.libpage { position: relative; padding: 18px; }
   .pl-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 18px 12px; }
 }
 @media (prefers-reduced-motion: reduce) { .libpage .list.wall > li > :is(img, .noimg), .libpage .list.wall .btns, .pl-grid .pl > :is(img, .noimg), .pl-grid .pl .btns .del { transition: none; } }
+
+/* ---- «Ігри»: «Зараз» у небі (раунд hlechyky-igry, 18.11) ---- Коли в лобі є що показати в «🔥 Зараз» — стіл чекає,
+   хтось грає, є що продовжити, — слова «Ігри» в небі нема: заголовок сторінки це «Зараз» і скільки столів, а картки
+   стоять просто на пейзажі. Нема нічого (або людина ще не назвалась) — лишається назва розділу з рядком.
+   Клас g-nowsky на body ставить games/core.js (syncNowSky); за столом гри сцени нема. */
+body.g-nowsky:not(.g-room) #viewGames > .sec-top { display: none; }
+body.g-nowsky:not(.g-room) .gl-now {
+  display: grid; align-content: center; gap: 16px; min-height: calc(var(--sky-h) - var(--sky-fg) - 18px); padding: 14px 8px 0;
+  border: 0; background: none; box-shadow: none;
+}
+body.g-nowsky:not(.g-room) .gl-now > h3 {
+  display: block; font-size: clamp(2em, 3vw, 2.8em); font-weight: 800; letter-spacing: -.025em; line-height: 1.02; color: #fff; text-shadow: 0 2px 18px rgba(0, 0, 0, .38);
+}
+body.g-nowsky:not(.g-room) .gl-now > h3 .muted { display: block; margin-top: 8px; font-size: .42em; font-weight: 400; letter-spacing: 0; line-height: 1.4; color: rgba(255, 255, 255, .86); }
+body.g-nowsky:not(.g-room) .gl-now > h3 :is(.gnow-sep, .gnow-ico) { display: none; }
+/* картки стоять просто на пейзажі — темне скло, щоб читались на будь-якому небі */
+body.g-nowsky:not(.g-room) .gl-strip { gap: 12px; padding-bottom: 6px; }
+body.g-nowsky:not(.g-room) .gl-strip > * { flex-basis: 316px; padding: 13px 14px; border-color: rgba(255, 255, 255, .16); border-radius: 16px; background: rgba(10, 24, 18, .84); box-shadow: 0 16px 30px -16px rgba(0, 0, 0, .7); }
+body.g-nowsky:not(.g-room) .gl-strip > .gnc-cont { border-color: var(--accent2); background: linear-gradient(135deg, rgba(244, 197, 66, .22), rgba(10, 24, 18, .88) 62%); }
+body.g-nowsky:not(.g-room) .gl-strip .gnc b { font-family: var(--display); font-size: var(--t-l); }
+body.g-nowsky:not(.g-room) .gl-strip button.primary { min-height: 38px; padding: 0 16px; }
+@media (max-width: 900px) {
+  body.g-nowsky:not(.g-room) .gl-now { align-content: start; gap: 10px; min-height: calc(var(--sky-h) - var(--sky-fg) - 12px); padding: 8px 4px 0; }
+  body.g-nowsky:not(.g-room) .gl-now > h3 { font-size: 1.7em; }
+  body.g-nowsky:not(.g-room) .gl-now > h3 .muted { margin-top: 4px; font-size: .56em; }
+  body.g-nowsky:not(.g-room) .gl-strip > * { flex-basis: 270px; padding: 10px 12px; }
+  /* «☀ Сьогодні · щоденний глек №70» на вузькому — у два рядки, а не двома стовпчиками */
+  .gdaybox .gday-ht h3 { flex-wrap: wrap; gap: 0 6px; font-size: var(--t-l); }
+}

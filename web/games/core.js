@@ -2428,8 +2428,16 @@
     dockEl.addEventListener('pointercancel', up);
   }
 
+  /// «Зараз у небі»: коли в лобі є що показати в «🔥 Зараз» (стіл, чиєсь соло, «Продовжити»), цей блок стоїть на пейзажі
+  /// замість назви розділу (static/polyva.css, body.g-nowsky). Лобі не відкрите чи блок порожній — у небі лишається «Ігри».
+  function syncNowSky() {
+    const L = root && shown && view.kind === 'lobby' ? root.querySelector('.gview > .globby') : null;
+    document.body.classList.toggle('g-nowsky', !!(L && L.querySelector('.gl-now:not([hidden]) .gl-strip')));
+  }
+
   function renderView() {
     renderViewNow();
+    syncNowSky();
     anthemPage();
     notifyTable();
     if (staleMods.size) flushStale();   // людина встала з-за столу, чий модуль тим часом оновився
@@ -3658,6 +3666,7 @@
     const L = root && root.querySelector('.gview > .globby');
     if (!L) { renderView(); return; }
     slotHtml(L.querySelector('.gl-now'), nowHtml());
+    syncNowSky();
     paintLive(L);
   }
   function renderLobby(box) {
@@ -5564,7 +5573,7 @@
       syncShown();
       setFull(false);
       setFs(false);
-      document.body.classList.remove('g-room', 'g-arcade', 'g-fs');
+      document.body.classList.remove('g-room', 'g-arcade', 'g-fs', 'g-nowsky');
       syncWatch();
       checkTurns();
     },

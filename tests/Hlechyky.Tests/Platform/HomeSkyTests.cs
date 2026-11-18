@@ -144,6 +144,27 @@ public class HomeSkyTests
         Assert.DoesNotContain("lib-proby", js);
     }
 
+    /// <summary>
+    /// «Ігри» — «Зараз у небі»: коли в лобі є картки «🔥 Зараз», блок стоїть на пейзажі замість назви розділу. Зшито
+    /// класом g-nowsky на body: ставить його games/core.js, правила під нього — у polyva.css; за столом гри сцени нема.
+    /// </summary>
+    [Fact]
+    public void Games_now_block_takes_the_sky_when_it_has_cards()
+    {
+        var core = Web("games/core.js");
+        Assert.Matches(@"classList\.toggle\('g-nowsky',[^;]*\.gl-now:not\(\[hidden\]\) \.gl-strip", core);
+        Assert.Equal(3, Regex.Matches(core, @"syncNowSky\(\)").Count);   // оголошення, renderView і lobbyLive
+        var css = Web("static/polyva.css");
+        Assert.Contains("body.g-nowsky:not(.g-room) #viewGames > .sec-top { display: none; }", css);
+        var loose = Regex.Matches(css, @"(?m)^\s*body\.g-nowsky(?!:not\(\.g-room\))[^{]*\{").Select(m => m.Value.Trim()).ToList();
+        Assert.True(loose.Count == 0, "правила «Зараз у небі» без :not(.g-room): " + string.Join(" ", loose));
+        // назва «Ігри» лишається в розмітці: вона стоїть у небі, коли показати нічого
+        Assert.Matches(@"(?s)id=""viewGames"">.{0,400}<h1>Ігри</h1>", Web("index.html"));
+        // проби вигляду (?igry, ?dnes) були тимчасові
+        Assert.False(File.Exists(Paths.Resolve("web/static/igry-proby.css")), "проби вигляду «Ігор» мали зникнути");
+        Assert.DoesNotContain("igry-proby", Web("app.js"));
+    }
+
     [Fact]
     public void The_section_scene_is_switched_by_the_route_and_gives_way_to_a_game_table()
     {
