@@ -48,6 +48,19 @@ public class DecorStepTests
             Assert.Contains(n, names);
     }
 
+    /// <summary>Хмари «Обрію» пливуть так повільно, що 10 кроків на секунду — це зсуви по третині пікселя: їх крок рідший
+    /// (18.11, оптимізація пейзажу). Повільне мусить бути й серед NAMES — інакше його ніхто не крокує.</summary>
+    [Fact]
+    public void Clouds_step_slower_than_the_rest()
+    {
+        var js = Web("krok.js");
+        var m = Regex.Match(js, @"const SLOW = new Map\(\[(?<b>[^;]*)\]\);");
+        Assert.True(m.Success, "у krok.js має бути const SLOW = new Map([...])");
+        var slow = Regex.Matches(m.Groups["b"].Value, @"\['(?<n>[\w-]+)', (?<ms>\d+)\]").ToDictionary(x => x.Groups["n"].Value, x => int.Parse(x.Groups["ms"].Value));
+        Assert.True(slow.TryGetValue("sky-drift", out var ms) && ms > 100 && ms <= 250, "хмари — 4–9 кроків на секунду");
+        Assert.All(slow.Keys, n => Assert.Contains(n, Stepped()));
+    }
+
     [Fact]
     public void Every_stepped_name_is_a_real_keyframes()
     {

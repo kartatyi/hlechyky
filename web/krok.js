@@ -33,6 +33,10 @@
     'mk-rays', // кільце променів знака в шапці — теж поки ефір грає
   ]);
   const STEP_MS = 100;
+  /// Повільніші за решту: хмари «Обрію» пливуть ~3 пікселі на секунду, тож 10 кроків — це зсуви по третині пікселя, яких
+  /// не видно, а кадр (перескласти небо) коштує щоразу. 5 кроків на секунду — те саме повзання, кадрів удвічі менше.
+  const SLOW = new Map([['sky-drift', 200]]);
+  const last = new WeakMap();
   const list = new Set();
   let timer = 0;
   const now = () => (document.timeline && document.timeline.currentTime) || performance.now();
@@ -55,7 +59,12 @@
     for (const a of list) if (a.playState === 'idle') list.delete(a);
     if (!list.size) { clearInterval(timer); timer = 0; return; }
     const t = now();
-    for (const a of list) a.currentTime = t;
+    for (const a of list) {
+      const p = SLOW.get(a.animationName);
+      if (p && t - (last.get(a) || -Infinity) < p - STEP_MS / 2) continue;
+      last.set(a, t);
+      a.currentTime = t;
+    }
   }
 
   document.addEventListener('animationstart', (e) => {

@@ -3,8 +3,9 @@ using System.Text.RegularExpressions;
 namespace Hlechyky.Tests.Platform;
 
 /// <summary>
-/// Пейзаж головної («Обрій»): малюнок, стилі й скрипт лежать у трьох файлах і зшиті лише назвами — класами в SVG та
-/// змінними на &lt;html&gt;. Розійдуться — шар мовчки стане чорним або зникне, а браузерних тестів нема.
+/// Пейзаж головної («Обрій»): малюнок (static/obrii.svg), стилі його шарів (static/obrii.css) і скрипт (sky.js) лежать
+/// у трьох файлах і зшиті лише назвами — класами в SVG, змінними кольорів і кількома рядками, які скрипт підміняє в
+/// малюнку. Розійдуться — шар мовчки стане чорним або зникне, а браузерних тестів нема.
 /// </summary>
 public class HomeSkyTests
 {
@@ -14,33 +15,67 @@ public class HomeSkyTests
     [InlineData("static/obrii.svg")]
     public void Every_class_in_the_drawing_has_a_rule(string file)
     {
-        var css = Web("static/polyva.css");
+        var css = Web("static/obrii.css");
         var classes = Regex.Matches(Web(file), @"class=""(?<c>[^""]+)""")
             .SelectMany(m => m.Groups["c"].Value.Split(' ', StringSplitOptions.RemoveEmptyEntries))
             .Distinct()
             .ToList();
         Assert.NotEmpty(classes);
-        Assert.All(classes, c => Assert.True(Regex.IsMatch(css, @"\." + Regex.Escape(c) + @"(?![\w-])"), $"у polyva.css нема правила для .{c} з {file}"));
+        Assert.All(classes, c => Assert.True(Regex.IsMatch(css, @"\." + Regex.Escape(c) + @"(?![\w-])"), $"у obrii.css нема правила для .{c} з {file}"));
     }
 
+    /// <summary>Кожен колір шарів ставить sky.js (compute → vars): картинку пейзажу він складає лише тоді, коли кольори вже
+    /// пораховано, тож типових значень у стилях малюнка не треба. Окремо: --k стоїть у самому малюнку, --rx (де відблиск)
+    /// і --bg (колір сторінки) вписує drawArt.</summary>
     [Fact]
-    public void Every_colour_the_layers_use_is_set_by_the_script_and_has_a_default()
+    public void Every_colour_the_layers_use_is_set_by_the_script()
     {
-        var css = Web("static/polyva.css");
+        var css = Web("static/obrii.css");
         var js = Web("sky.js");
-        // лише правила шарів пейзажу: .ld-… і зупинки градієнтів .ob-s…
-        var used = Regex.Matches(css, @"(?m)^\.(?:ld|ob)-[\w-]+[^{]*\{(?<body>[^}]*)\}")
-            .SelectMany(r => Regex.Matches(r.Groups["body"].Value, @"var\((?<v>--[\w-]+)").Select(v => v.Groups["v"].Value))
+        var used = Regex.Matches(css, @"var\((?<v>--[\w-]+)").Select(v => v.Groups["v"].Value)
             .Where(v => v != "--k" && v != "--rx" && v != "--bg")
             .Distinct()
             .ToList();
         Assert.NotEmpty(used);
-        var root = Regex.Match(css, @"(?s):root\s*\{(?<b>[^}]*--sk0[^}]*)\}").Groups["b"].Value;
-        Assert.All(used, v =>
-        {
-            Assert.True(js.Contains("'" + v + "'"), $"sky.js не ставить {v}");
-            Assert.True(Regex.IsMatch(root, Regex.Escape(v) + @"\s*:"), $"у :root нема типового значення {v} (поки скрипт не відпрацював, шар чорний)");
-        });
+        Assert.All(used, v => Assert.True(js.Contains("'" + v + "'"), $"sky.js не ставить {v}"));
+        Assert.Contains("';--bg:' + css(BG) + ';--rx:' + art.rx", js);
+        Assert.Contains("style=\"--k:", Web("static/obrii.svg"));
+    }
+
+    /// <summary>
+    /// Пейзаж у сторінці — одна картинка, а не 2000 вузлів SVG (18.11, «оптимізація пейзажу»): вбудований малюнок
+    /// браузер розбивав на десятки шарів композитора, і кожен крок хмар чи дощу перескладав їх усі. Тому: стилі шарів
+    /// сторінка не вантажить (вони йдуть у картинку), drawArt підміняє в малюнку три місця — птахів, тіні на воді й
+    /// корінь (погода, вузький екран) — і їх має бути рівно стільки, скільки він чекає; пейзаж і дощ — кожен у своєму
+    /// шарі, щоб крок дощу не перемальовував пейзаж.
+    /// </summary>
+    [Fact]
+    public void The_landscape_is_one_picture_in_its_own_layer()
+    {
+        var page = Web("static/polyva.css");
+        Assert.True(!Regex.IsMatch(page, @"(?m)^\s*(:root\[[^\]]*\]\s*)?\.(ld|ob)-"), "правила шарів пейзажу мають жити в static/obrii.css, а не в polyva.css");
+        Assert.DoesNotMatch(@"<link[^>]*obrii\.css", Web("index.html"));
+
+        var js = Web("sky.js");
+        Assert.Contains("text('/static/obrii.svg'), text('/static/obrii.css')", js);
+        Assert.Contains("new Blob([txt], { type: 'image/svg+xml' })", js);
+        Assert.DoesNotContain(".innerHTML = t", js);
+
+        var svg = Web("static/obrii.svg");
+        Assert.Matches(@"^<svg [^>]*>", svg);
+        Assert.Equal(1, Regex.Matches(svg, Regex.Escape("<g class=\"ld-birds\"></g>")).Count);
+        var shd = Regex.Matches(svg, @"data-shd=""").Count;
+        Assert.True(shd > 0, "тіні на воді (data-shd) зникли з малюнка");
+        Assert.Equal(shd, Regex.Matches(svg, @"data-shd=""[\d.]+"" transform=""[^""]*""").Count);   // drawArt міняє transform одразу за data-shd
+        var styles = Web("static/obrii.css");
+        Assert.Contains(":root[data-anchor=\"narrow\"] .ld-reed-a", styles);
+        Assert.Contains(":root[data-wx=\"rain\"] .ld-splash", styles);
+        Assert.Contains("'<svg data-wx=\"' + art.wx + '\" data-anchor=\"' + art.anchor + '\" '", js);
+
+        Assert.Matches(@"(?m)^\.sky-art \{[^}]*will-change: transform", page);
+        Assert.Matches(@"(?m)^:root\[data-wx=""rain""\] \.sky-fall[^{]*\{[^}]*will-change: transform", page);
+        // плитки дощу — растрові: SVG-плитки браузер малював би наново на кожен крок
+        Assert.DoesNotContain("data:image/svg+xml", Regex.Match(js, @"(?s)function fall\(.*?\n  \}").Value);
     }
 
     [Fact]

@@ -351,7 +351,7 @@ my $stars = ''; srand(7); for (1 .. 110) { $stars .= sprintf('<circle cx="%.0f" 
 
 my $svg = <<"SVG";
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 90 2000 470" preserveAspectRatio="xMidYMax slice">
-  <!-- «Обрій»: Тетерів у Житомирі на головній (web/sky.js ставить кольори змінними, static/polyva.css розкладає їх по шарах).
+  <!-- «Обрій»: Тетерів у Житомирі на головній (стилі шарів — static/obrii.css; web/sky.js вписує їх у малюнок разом із кольорами цієї миті й показує однією картинкою).
        Згори вниз: зорі (хмари малює sky.js окремим шаром), далекі пагорби, підвісний пішохідний міст, лісисті береги каньйону з гранітною скелею,
        вода з камінням і лататтям, ближні береги, передній план з очеретом. Птахів у небі домальовує sky.js (ld-birds) — за погодою, часом і порою року. Далеке не розмите, а тихе: мало контрасту, нерівні «живі» краї (зсув шумом)
        й туман між шарами; чіткий і темний лише передній план. На воді — тіні берегів, дерев і моста: sky.js
@@ -377,7 +377,7 @@ my $svg = <<"SVG";
     <clipPath id="ob-cml"><path d="$midL"/></clipPath><clipPath id="ob-cmr"><path d="$midR"/></clipPath>
     <linearGradient id="ob-gdl"><stop offset="0" class="ob-sd1"/><stop offset=".8" class="ob-sd0"/></linearGradient>
     <linearGradient id="ob-gdr"><stop offset=".2" class="ob-sd0"/><stop offset="1" class="ob-sd1"/></linearGradient>
-    <!-- жодного плаского елемента: у кожного свій градієнт (світліший верх чи середина), кольори — зі змінних у polyva.css -->
+    <!-- жодного плаского елемента: у кожного свій градієнт (світліший верх чи середина), кольори — зі змінних у obrii.css -->
     <linearGradient id="ob-gp" x1="0" y1="0" x2="0" y2="1"><stop offset="0" class="ob-sp0"/><stop offset="1" class="ob-sp1"/></linearGradient>
     <radialGradient id="ob-gc" cx=".5" cy=".28" r=".8"><stop offset="0" class="ob-sc0"/><stop offset="1" class="ob-sc1"/></radialGradient>
     <linearGradient id="ob-gbr" gradientUnits="userSpaceOnUse" x1="0" y1="224" x2="0" y2="350"><stop offset="0" class="ob-sb0"/><stop offset="1" class="ob-sb1"/></linearGradient>

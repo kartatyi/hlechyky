@@ -4,6 +4,7 @@
 //
 // Малює все CSS (static/polyva.css) і пейзаж static/obrii.svg — Тетерів у Житомирі: небо в три кольори, далекі
 // пагорби, підвісний міст, береги каньйону, вода з відблиском; усе далеке тоне в тумані, чіткий лише очерет спереду.
+// Пейзаж показуємо однією картинкою: малюнок, стилі його шарів (static/obrii.css) і кольори цієї миті — див. drawArt().
 // Колір обрію (--tint) і бік, звідки світить сонце (--sun-x, --sh-x), беруть фон і блоки всього сайту. Звідси йдуть лише змінні на <html> — кольори
 // (--sk0…--sk2, --l1…--l4 і їхні «…m» у тумані, --lb міст, --rock, --w0, --w1, --pad, --mist), скільки туману
 // (--sky-mist), ліхтарі на мосту (--sky-lamp), світила (--sky-orb, --sun-c, --moon-c, --sky-halo…; місяць — зі справжньою фазою),
@@ -255,13 +256,14 @@
     if (!el || !el.clientWidth || !pos) return;
     const W = el.clientWidth, H = el.clientHeight;
     // На телефоні малюнок нижчий за сцену (над ним — саме небо), тож масштаб беремо з малюнка, а не зі сцени.
-    const svg = el.querySelector('.sky-art svg');
-    const s = Math.max(W / ART_W, ((svg && svg.clientHeight) || H) / ART_H);
+    const img = el.querySelector('.sky-art img'), ah = (img && img.clientHeight) || H;
+    const s = Math.max(W / ART_W, ah / ART_H);
     const vis = W / s;                                        // скільки одиниць пейзажу видно в ширину
     const left = (ART_W - vis) / 2;
     // Ліворуч у небі стоїть заголовок, праворуч на широкому екрані — балачки: світила ходять у проміжку між ними,
     // якраз над мостом (на телефоні — правою половиною), щоб не сідати ні на текст, ні за панель.
     const narrow = el.dataset.anchor === 'narrow';
+    art.anchor = narrow ? 'narrow' : 'mid';
     const xOf = (b) => { const u = clamp(b.ha / 2.1, -1, 1); return left + vis * (narrow ? 0.8 + 0.08 * u : 0.52 + 0.16 * u); };
     // Висота — частка від найвищої точки, але не чесна: інакше зимове сонце (16° опівдні) весь день лежало б на пагорбах.
     // Беремо середнє між «сьогоднішнім полуднем» і «літнім»: узимку опівдні світило стоїть на півдорозі, улітку — вгорі.
@@ -274,15 +276,14 @@
     put('m', xOf(pos.moon), yOf(pos.moon));
     const L = pos.lit || pos.sun, xu = xOf(L);                // сяйво, доріжка й відблиск на воді — під тим, що світить
     put('h', xu, yOf(L));
-    el.style.setProperty('--rx', xu.toFixed(1));
+    art.rx = xu.toFixed(1);
     // хмари: картинка 2400×300, тож один її оберт — у вісім висот шару
     const cl = el.querySelector('.sky-clouds');
     if (cl) el.style.setProperty('--cl-p', (cl.clientHeight * 8).toFixed(0) + 'px');
     // птахи: місце зграї — частка видимої ширини й висоти неба (від шапки до далеких пагорбів), самі птахи — в одиницях малюнка
-    const bg = el.querySelector('.ld-birds');
-    if (bg) {
-      const top = Math.max(ART_Y + 6, ART_Y + ART_H - Math.min((svg && svg.clientHeight) || H, H - hdr - 10) / s), bot = 296;
-      bg.innerHTML = flocks.map((f) => {
+    {
+      const top = Math.max(ART_Y + 6, ART_Y + ART_H - Math.min(ah, H - hdr - 10) / s), bot = 296;
+      art.birds = flocks.map((f) => {
         // зграї тримаються відкритого неба: на широкому екрані — між заголовком і балачками (там, де ходять світила),
         // низькі — ще вужче, над річкою між берегами (з боків там уже ліс); на телефоні — на всю ширину
         const cx = left + vis * (f.w > 0.6 ? 0.38 + 0.24 * f.u : narrow ? 0.1 + 0.8 * f.u : 0.3 + 0.4 * f.u), cy = top + (bot - top) * f.w;
@@ -298,12 +299,58 @@
       }).join('');
     }
     // Тіні на воді падають у бік від світила; що нижче воно стоїть, то вони довші.
-    const lean = (pos.lit ? -34 * Math.sin(pos.lit.ha) : 0).toFixed(1);
-    const long = (0.5 + 0.45 * (1 - clamp(pos.lit ? pos.lit.alt / Math.max(12, pos.lit.top) : 1, 0, 1))).toFixed(2);
-    el.querySelectorAll('[data-shd]').forEach((sh) => {
-      const y = sh.dataset.shd;
-      sh.setAttribute('transform', 'translate(0 ' + y + ') skewX(' + lean + ') scale(1 -' + long + ') translate(0 -' + y + ')');
-    });
+    art.lean = (pos.lit ? -34 * Math.sin(pos.lit.ha) : 0).toFixed(1);
+    art.long = (0.5 + 0.45 * (1 - clamp(pos.lit ? pos.lit.alt / Math.max(12, pos.lit.top) : 1, 0, 1))).toFixed(2);
+    // Розмір змінився ледь-ледь (з'явилась смуга прокрутки, підросла шапка) — картинку не перебудовуємо: вона й так
+    // тягнеться по сцені, а відблиск і птахи зсунулись би на частку пікселя. Кожна перебудова — новий SVG-документ на
+    // 2000 вузлів, який браузер потім прибирає (паузою головного потоку), тож зайвих не робимо.
+    art.w = W; art.h = ah;
+    const was = artBuilt;
+    if (!was || was.anchor !== art.anchor || Math.abs(W - was.w) > W * 0.03 || Math.abs(ah - was.h) > ah * 0.03) drawArt();
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // пейзаж — однією картинкою
+  // ---------------------------------------------------------------------------------------------
+
+  /// Пейзаж у сторінці — не 2000 вузлів SVG, а одна картинка: static/obrii.svg зі своїми стилями (static/obrii.css), у
+  /// яку перед показом вписано кольори цієї миті, погоду, птахів, тіні на воді й де стоїть відблиск. Чому (18.11,
+  /// заміри на головній, 1920×1080): вбудований малюнок браузер розбивав на ~70 окремих шарів композитора (прозорість,
+  /// розмиття, тіні — кожне своїм шаром; усього 94 шари й ~20 Мпікс на екран у 2 Мпікс), і кожен крок хмар, дощу чи
+  /// «Веселки» в Балачках перескладав їх усі; картинка — один шар, який раструється раз і далі лише накладається.
+  /// Стало (той самий Chrome, справжня відеокарта, «було/стало» почергово): GPU у спокої −46…52 %, при прокрутці
+  /// −51…58 % (1920×1080 і 2560×1440), p95 кадру прокрутки 11 → 6 мс; телефон (×3, CPU ×4) — GPU у спокої −75 %.
+  /// Перебудовуємо, лише коли щось у ній справді змінилось: кольори й погода — щонайчастіше раз на п'ять хвилин,
+  /// птахи — раз на десять, розмір вікна — помітно й коли його вже перестали тягнути (до того стара картинка просто
+  /// тягнеться). Першу картинку будуємо, коли вже знаємо погоду (чекаємо її щонайбільше секунду), — інакше на старті
+  /// їх виходило дві-три поспіль. Нова підміняє стару, вже розібрана, тож пейзаж не блимає.
+  let artSvg = '', artCss = '', artSrc = '', artUrl = '', artTimer = 0, artTurn = 0, artWait = 0, artBuilt = null;
+  const art = { vars: null, wx: 'clear', anchor: 'mid', rx: '1400', birds: '', lean: '0', long: '.6', w: 0, h: 0 };
+  const artGo = () => { if (artWait) { clearTimeout(artWait); artWait = 0; } };
+  function artText() {
+    const vars = Object.keys(art.vars).map((k) => k + ':' + art.vars[k]).join(';') + ';--bg:' + css(BG) + ';--rx:' + art.rx;
+    return artSvg
+      .replace('<svg ', () => '<svg data-wx="' + art.wx + '" data-anchor="' + art.anchor + '" ')
+      .replace(/<svg [^>]*>/, (m) => m + '<style><![CDATA[:root{' + vars + '}\n' + artCss + ']]></style>')
+      .replace('<g class="ld-birds"></g>', () => '<g class="ld-birds">' + art.birds + '</g>')
+      .replace(/data-shd="([\d.]+)" transform="[^"]*"/g, (m, y) => 'data-shd="' + y + '" transform="translate(0 ' + y + ') skewX(' + art.lean + ') scale(1 -' + art.long + ') translate(0 -' + y + ')"');
+  }
+  function drawArt(now) {                    // now — одразу; інакше — за чверть секунди тиші (вікно тягнуть)
+    clearTimeout(artTimer);
+    if (!now) { artTimer = setTimeout(drawArt, 250, true); return; }
+    const img = document.querySelector('#sky .sky-art img');
+    if (!img || !artSvg || !art.vars || artWait) return;
+    artBuilt = { w: art.w, h: art.h, anchor: art.anchor };
+    const txt = artText();
+    if (txt === artSrc) return;
+    artSrc = txt;
+    // Стару картинку браузер показує, поки нова не розібрана, тож пейзаж не блимає. Окремий new Image() для
+    // попереднього розбору не беремо: це був би ще один SVG-документ на кожну перебудову — більше сміття для прибирання.
+    const url = URL.createObjectURL(new Blob([txt], { type: 'image/svg+xml' })), old = artUrl, turn = ++artTurn;
+    artUrl = url;
+    img.decoding = 'async';
+    img.src = url;
+    img.decode().catch(() => { if (turn === artTurn) artSrc = ''; }).then(() => { if (old) URL.revokeObjectURL(old); });
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -554,7 +601,10 @@
   /// Дощ і сніг: три шари глибини, у кожному краплі розкидано випадково — довжина, яскравість, місце. Шар — плитка, що
   /// повторюється, але нахил підібрано так, що за один оберт вона зсувається рівно на себе: шва в русі нема.
   /// Мряка — рідко й коротко, злива й гроза — густо й довго.
-  let fallKey = '';
+  /// Плитки — растрові (полотно → PNG), а не SVG: крок дощу (10 разів на секунду, web/krok.js) перемальовує шар, і SVG-
+  /// плитки браузер щоразу малював би наново, краплю за краплею, а готову картинку лише накладає. Шар у дощу свій
+  /// (will-change у polyva.css), тож пейзаж під ним при цьому не перемальовується.
+  let fallKey = '', fallTurn = 0, fallUrls = [];
   function fall(kind, code) {
     const el = document.querySelector('#sky .sky-fall');
     if (!el) return;
@@ -562,25 +612,44 @@
     const key = kind + (heavy ? 'h' : light ? 'l' : '');
     if (key === fallKey) return;
     fallKey = key;
-    if (kind !== 'rain' && kind !== 'storm' && !snow) { el.style.backgroundImage = ''; return; }
+    const turn = ++fallTurn;
+    if (kind !== 'rain' && kind !== 'storm' && !snow) {
+      el.style.backgroundImage = '';
+      fallUrls.forEach((u) => URL.revokeObjectURL(u));
+      fallUrls = [];
+      return;
+    }
     const r = rng(seed + 7), R = (a, b) => a + (b - a) * r(), W = 320, H = 400;
-    const img = [], size = [], to = [];
+    const d = Math.min(2, window.devicePixelRatio || 1);           // плитка — у пікселях екрана (не більше ніж ×2)
+    const tiles = [], size = [], to = [];
     [[0.55, 0.55], [0.8, 0.8], [1.15, 1]].forEach(([scale, alpha], i) => {
       const n = Math.round((snow ? 34 : heavy ? 72 : light ? 20 : 44) * (i === 2 ? 0.6 : 1));
       const k = snow ? 1 : Math.round(R(3, 6)), tan = snow ? 0 : W / (k * H);
-      let s = '';
+      const cv = document.createElement('canvas'), g = cv.getContext('2d');
+      cv.width = Math.round(W * scale * d); cv.height = Math.round(H * scale * d);
+      g.scale(cv.width / W, cv.height / H);
+      g.lineCap = 'round';
       for (let q = 0; q < n; q++) {
-        const x = R(0, W), y = R(0, H), a = (R(0.12, 0.5) * alpha).toFixed(2), len = R(10, heavy ? 54 : light ? 22 : 38), rad = R(0.8, 2.4), sw = R(0.7, 1.5).toFixed(1);
+        const x = R(0, W), y = R(0, H), a = (R(0.12, 0.5) * alpha).toFixed(2), len = R(10, heavy ? 54 : light ? 22 : 38), rad = R(0.8, 2.4), sw = R(0.7, 1.5);
+        g.fillStyle = g.strokeStyle = 'rgba(255,255,255,' + a + ')';
+        g.lineWidth = sw;
+        g.beginPath();
+        // крапля біля краю плитки домальована й з іншого боку — шва нема
         for (const dx of snow ? [0, W, -W] : [0, W]) for (const dy of snow ? [0, H, -H] : [0, -H]) {
-          s += snow ? '<circle cx="' + (x + dx).toFixed(1) + '" cy="' + (y + dy).toFixed(1) + '" r="' + rad.toFixed(1) + '" fill="rgba(255,255,255,' + a + ')"/>'
-            : '<path d="M' + (x + dx).toFixed(1) + ' ' + (y + dy).toFixed(1) + 'l' + (-len * tan).toFixed(1) + ' ' + len.toFixed(1) + '" stroke="rgba(255,255,255,' + a + ')" stroke-width="' + sw + '" stroke-linecap="round"/>';
+          if (snow) { g.moveTo(x + dx + rad, y + dy); g.arc(x + dx, y + dy, rad, 0, 2 * Math.PI); } else { g.moveTo(x + dx, y + dy); g.lineTo(x + dx - len * tan, y + dy + len); }
         }
+        if (snow) g.fill(); else g.stroke();
       }
-      img.push('url("data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '">' + s + '</svg>') + '")');
+      tiles.push(new Promise((ok) => cv.toBlob((b) => ok(b ? URL.createObjectURL(b) : ''))));
       size.push((W * scale).toFixed(0) + 'px ' + (H * scale).toFixed(0) + 'px');
       to.push((snow ? (i % 2 ? 1 : -1) * W * scale : -W * scale).toFixed(0) + 'px ' + (k * H * scale).toFixed(0) + 'px');
     });
-    el.style.backgroundImage = img.join(', ');
+    Promise.all(tiles).then((urls) => {
+      if (turn !== fallTurn) { urls.forEach((u) => u && URL.revokeObjectURL(u)); return; }
+      fallUrls.forEach((u) => URL.revokeObjectURL(u));
+      fallUrls = urls;
+      el.style.backgroundImage = urls.map((u) => 'url(' + u + ')').join(', ');
+    });
     el.style.backgroundSize = size.join(', ');
     el.style.setProperty('--fall-to', to.join(', '));
     el.style.animationDuration = (snow ? 16 : heavy ? 1.7 : light ? 3.4 : 2.4) + 's';
@@ -596,6 +665,8 @@
       for (const k of Object.keys(v.vars)) r.style.setProperty(k, v.vars[k]);
       r.dataset.sky = v.phase;
       r.dataset.wx = v.kind;
+      art.vars = v.vars;
+      art.wx = v.kind;
       document.querySelectorAll('[data-sky-text]').forEach((el) => {
         el.textContent = v.text ? (v.place ? v.place + ': ' : '') + v.text + '.' : '';
         el.hidden = !v.text;
@@ -606,6 +677,7 @@
     birds(v);
     fall(v.kind, v.code);
     place();
+    drawArt(true);
   }
 
   /// Погода мого району (той, що вибрано для «Тривоги»): сервер тримає її чверть години, ми питаємо не частіше.
@@ -614,8 +686,8 @@
     wxAt = Date.now();
     const ob = o.oblast ? o.oblast() : '';
     o.api('GET', '/api/weather' + (ob ? '?oblast=' + encodeURIComponent(ob) : ''))
-      .then((d) => { wx = d && !d.off ? d : null; paint(); })
-      .catch(() => { /* сервер без погоди чи Open-Meteo мовчить — небо лишається ясним */ });
+      .then((d) => { wx = d && !d.off ? d : null; artGo(); paint(); })
+      .catch(() => { artGo(); drawArt(true); /* сервер без погоди чи Open-Meteo мовчить — небо лишається ясним */ });
   }
 
   const parseTime = (s, day) => {
@@ -627,25 +699,35 @@
     return at;
   };
 
-  /// Пейзаж — окремий файл: вставляємо його в сцену розміткою (щоб кольори брались зі змінних), раз на сторінку.
+  /// Пейзаж — два окремі файли (малюнок і стилі його шарів): беремо обидва раз на сторінку, далі drawArt() складає з
+  /// них картинку. Порожня <img> стоїть одразу: place() бере масштаб із її висоти ще до малюнка.
   function mount() {
     const el = document.getElementById('sky');
     if (!el || el.dataset.ready) return;
     el.dataset.ready = '1';
     const narrow = window.matchMedia('(max-width: 900px)');
     const anchor = () => {
-      // На телефоні видно лише середину пейзажу — міст; очерет з країв CSS підсуває до неї (.ld-reed-a / -b).
+      // На телефоні видно лише середину пейзажу — міст; очерет з країв підсуває до неї сам малюнок (data-anchor, obrii.css).
       el.dataset.anchor = narrow.matches ? 'narrow' : 'mid';
       place();
     };
-    const art = (url, into) => fetch(url).then((r) => (r.ok ? r.text() : '')).then((t) => {
-      if (!t) return;
-      into.innerHTML = t;
+    artWait = setTimeout(() => { artWait = 0; drawArt(true); }, 1000);   // погода зазвичай приходить раніше — тоді artGo()
+    const host = el.querySelector('.sky-art');
+    if (host && !host.querySelector('img')) {
+      const img = document.createElement('img');
+      img.alt = '';
+      host.appendChild(img);
+    }
+    const text = (url) => fetch(url).then((r) => (r.ok ? r.text() : ''));
+    Promise.all([text('/static/obrii.svg'), text('/static/obrii.css')]).then(([svg, styles]) => {
+      if (!svg) return;
+      artSvg = svg;
+      artCss = styles.replace(/]]>/g, '');
       anchor();
+      drawArt(true);
     }).catch(() => { /* без малюнка лишається небо-градієнт */ });
-    art('/static/obrii.svg', el.querySelector('.sky-art'));
     narrow.addEventListener?.('change', anchor);
-    if (window.ResizeObserver) new ResizeObserver(place).observe(el);
+    if (window.ResizeObserver) new ResizeObserver(() => place()).observe(el);
     anchor();
     // Шапка на головній прозора — лежить просто в небі; щойно сторінку прокрутили, вертає собі тло.
     const scrolled = () => document.body.classList.toggle('scrolled', window.scrollY > 16);
