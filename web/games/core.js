@@ -3648,7 +3648,7 @@
     const bits = [];
     if (rooms.length) bits.push(rooms.length + ' ' + (rooms.length === 1 ? 'стіл' : rooms.length < 5 ? 'столи' : 'столів'));
     if (soloNow.length) bits.push(soloNow.length + ' у соло');
-    return '<h3>🔥 Зараз' + (bits.length ? ' <span class="muted small">· ' + bits.join(' · ') + '</span>' : '') + '</h3>'
+    return '<h3><span class="gnow-ico">🔥 </span>Зараз' + (bits.length ? ' <span class="muted small"><span class="gnow-sep">· </span>' + bits.join(' · ') + '</span>' : '') + '</h3>'
       + '<div class="gl-strip" data-keepx="now">' + cards.join('') + '</div>';
   }
 
