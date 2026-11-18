@@ -1,0 +1,150 @@
+/* ТИМЧАСОВО — проби вигляду «Ефіру» у великій сцені (адреса ?efir=a|b|c, ?niz=1|2, ?demo). Вмикає їх блок у web/app.js
+   (перед render); після вибору лишити вибране в polyva.css, а цей файл і той блок прибрати.
+   a — «Пісня в небі»: заголовок сторінки — сама пісня, що грає; поле «Закинути» — великою смугою на березі;
+   b — «Ефір і пісня на березі»: назва розділу лишається в небі, як в інших розділах, пісня стоїть нижче, на березі;
+   c — «Що врубаємо?»: заголовок сторінки — головна дія, велике поле в небі; те, що грає, — вузьким програвачем на березі.
+   niz=1 — черга й поради Глека двома різними блоками, внизу полиця «Щойно грало»;
+   niz=2 — одна стрічка «далі в ефірі» (черга, а за нею поради), праворуч — «Щойно грало» списком. */
+
+/* ===== спільне: пісня без коробки (a, b) ===== */
+:root:is([data-efir="a"], [data-efir="b"]) #viewEfir .now-panel { border-color: transparent; background: none; box-shadow: none; }
+:root[data-efir] #viewEfir .now-panel > h2 { display: none; }
+:root:is([data-efir="a"], [data-efir="b"]) .now { align-items: center; color: #fff; text-shadow: 0 2px 18px rgba(0, 0, 0, .5); }
+:root:is([data-efir="a"], [data-efir="b"]) .now .cover { border-radius: 18px; box-shadow: 0 16px 36px rgba(0, 0, 0, .5); }
+:root:is([data-efir="a"], [data-efir="b"]) .now .title {
+  font-family: var(--display); font-weight: 800; letter-spacing: -.025em; line-height: 1.05; color: #fff;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; padding-bottom: .06em;
+}
+:root:is([data-efir="a"], [data-efir="b"]) .now .artist { margin-top: 6px; color: rgba(255, 255, 255, .92); }
+:root:is([data-efir="a"], [data-efir="b"]) .now .artist .by, :root:is([data-efir="a"], [data-efir="b"]) .now .why { color: rgba(255, 255, 255, .8); }
+:root:is([data-efir="a"], [data-efir="b"]) .now .artist .by b, :root:is([data-efir="a"], [data-efir="b"]) .now .artist .by .bynick { color: #fff; }
+:root:is([data-efir="a"], [data-efir="b"]) .now .progline { max-width: 640px; margin-top: 14px; color: rgba(255, 255, 255, .82); }
+:root:is([data-efir="a"], [data-efir="b"]) .now .progress { background: rgba(255, 255, 255, .24); }
+/* кнопки під піснею стоять просто на пейзажі — темне скло, щоб читались на будь-якому небі */
+:root:is([data-efir="a"], [data-efir="b"]) .now .actions { margin-top: 14px; gap: 8px; text-shadow: none; }
+:root:is([data-efir="a"], [data-efir="b"]) .now .actions > button:not(.bigplay):not(.active), :root:is([data-efir="a"], [data-efir="b"]) .now .actions .chip.src {
+  background: rgba(10, 24, 18, .78); border-color: rgba(255, 255, 255, .16); color: #fff;
+}
+:root:is([data-efir="a"], [data-efir="b"]) .now .actions > button:not(.bigplay) { min-height: 40px; padding: 0 13px; border-radius: 12px; }
+:root:is([data-efir="a"], [data-efir="b"]) .now .actions .reacts { margin-left: 6px; padding: 2px 6px; border: 1px solid rgba(255, 255, 255, .14); border-radius: 14px; background: rgba(10, 24, 18, .78); }
+/* велика ▶ — головна кнопка радіо: на широкому екрані теж стоїть біля пісні */
+:root[data-efir] .now .bigplay { display: inline-flex; flex: none; width: 54px; height: 54px; padding: 0; gap: 4px; justify-content: center; border: 0; border-radius: 50%; order: -1; margin-right: 6px; }
+:root[data-efir] .now .bigplay.primary svg { width: 22px; height: 22px; margin-left: 3px; }
+:root[data-efir] .now .bigplay.live { background: var(--panel3); color: var(--text); box-shadow: inset 0 0 0 1px var(--accent2); }
+:root[data-efir] #banner { justify-self: start; margin: 0 0 10px; }
+
+/* ===== спільне: поле «Закинути» — головна дія сторінки ===== */
+.ef-ask { display: none; }
+:root[data-efir] .ef-add { border-color: transparent; background: none; box-shadow: none; padding: 0; }
+:root[data-efir] .ef-add > h2 { display: none; }
+:root[data-efir] .ef-add .row {
+  gap: 8px; padding: 8px; border: 1px solid color-mix(in srgb, var(--accent) 38%, var(--line)); border-radius: 20px;
+  background: color-mix(in srgb, var(--panel) 96%, transparent); box-shadow: var(--sh-x) 20px 34px -20px rgba(0, 0, 0, .6);
+}
+:root[data-efir] .ef-add .row:focus-within { border-color: var(--accent); }
+:root[data-efir] .ef-add #q { flex: 1; min-width: 0; height: 50px; padding: 0 14px; border: 0; background: none; font-size: var(--t-l); }
+:root[data-efir] .ef-add #addBtn { height: 50px; padding: 0 28px; border-radius: 14px; background: var(--accent); color: var(--accent-ink); font-size: var(--t-l); font-weight: 700; }
+:root[data-efir] .ef-add #addBtn:hover { background: #ffd35a; }
+:root[data-efir] .ef-add #micBtn { width: 50px; height: 50px; padding: 0; border-radius: 14px; justify-content: center; font-size: var(--t-l); }
+
+/* ===== a — «Пісня в небі» ===== */
+:root[data-efir="a"] #viewEfir > .sec-top { display: none; }
+:root[data-efir="a"] #viewEfir .now-panel { display: grid; align-content: center; min-height: calc(var(--sky-h) - var(--sky-fg) - 18px); padding: 14px 8px 0; }
+:root[data-efir="a"] .now { grid-template-columns: 172px minmax(0, 1fr); gap: 26px; }
+:root[data-efir="a"] .now .title { font-size: clamp(2em, 3vw, 2.8em); }
+
+/* ===== b — «Ефір і пісня на березі» ===== */
+:root[data-efir="b"] #viewEfir > .sec-top { min-height: 0; padding-bottom: 0; }
+:root[data-efir="b"] #viewEfir .now-panel { padding: 0 8px; }
+:root[data-efir="b"] .now { grid-template-columns: 172px minmax(0, 1fr); gap: 24px; }
+:root[data-efir="b"] .now .title { font-size: clamp(1.8em, 2.5vw, 2.4em); }
+
+/* ===== c — «Що врубаємо?» ===== */
+:root[data-efir="c"] #viewEfir > .sec-top { display: none; }
+:root[data-efir="c"] .ef-add { order: -1; display: grid; align-content: center; gap: 18px; min-height: calc(var(--sky-h) - var(--sky-fg) - 18px); padding: 14px 8px 0; }
+:root[data-efir="c"] .ef-ask { display: block; font-family: var(--display); font-weight: 800; font-size: clamp(2.2em, 3.4vw, 3.2em); letter-spacing: -.03em; line-height: 1; color: #fff; text-shadow: 0 2px 18px rgba(0, 0, 0, .42); }
+:root[data-efir="c"] .ef-add .add { max-width: 880px; }
+:root[data-efir="c"] .ef-add .row { padding: 9px; border-color: rgba(255, 255, 255, .22); background: rgba(10, 24, 18, .78); box-shadow: 0 22px 44px -18px rgba(0, 0, 0, .7); }
+:root[data-efir="c"] .ef-add #q { height: 58px; }
+:root[data-efir="c"] .ef-add #addBtn { height: 58px; padding: 0 32px; }
+:root[data-efir="c"] .ef-add #micBtn { width: 58px; height: 58px; }
+/* те, що грає, — вузький програвач: обкладинка, назва, кнопки в один рядок, смужка під ними */
+:root[data-efir="c"] .now { grid-template-columns: 96px minmax(0, 1fr); gap: 18px; align-items: center; }
+:root[data-efir="c"] .now .nowinfo { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 18px; align-items: center; }
+:root[data-efir="c"] .now .title { grid-column: 1; font-size: var(--t-xl); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+:root[data-efir="c"] .now .artist { grid-column: 1; }
+:root[data-efir="c"] .now .why { grid-column: 1; }
+:root[data-efir="c"] .now .actions { grid-column: 2; grid-row: 1 / span 2; margin-top: 0; justify-content: flex-end; }
+:root[data-efir="c"] .now .progline { grid-column: 1 / -1; }
+
+/* ===== низ, варіант 1: черга й Глек — два різні блоки ===== */
+/* черга — рівний список: рядки без власних коробок, між ними волосинка */
+:root[data-efir] .ef-queue .qitem { padding: 10px 4px; border: 0; border-radius: 0; background: none; box-shadow: 0 1px 0 var(--line); }
+:root[data-efir] .ef-queue .qitem:last-child { box-shadow: none; }
+:root[data-efir] .ef-queue .qitem.dispatched .n { color: var(--accent); font-weight: 700; }
+:root[data-efir] .ef-queue .qitem img, :root[data-efir] .ef-queue .qitem .noimg { width: 52px; height: 52px; border-radius: 9px; }
+:root[data-efir] .ef-queue .qitem { grid-template-columns: 20px 52px 1fr auto; gap: 12px; }
+/* Глек говорить глиною: той самий теплий тон, що в його репліках у балачках */
+:root[data-efir] .dj-panel { margin-top: 0; border-color: #4a3a12; background: var(--rough) padding-box, linear-gradient(160deg, #33280f, #261e0d 70%) padding-box, linear-gradient(#4a3a12, #4a3a12) border-box; background-blend-mode: multiply, normal, normal; }
+/* Глек визирає з-за верхнього краю свого блока — він тут говорить, а не просто підписаний */
+:root[data-efir] .dj-head { align-items: center; margin-bottom: 14px; }
+:root[data-efir] .dj-head img { position: relative; top: -22px; width: 84px; height: 84px; margin: -8px 0 -30px -6px; }
+:root[data-efir] .dj-head h2 { font-family: var(--display); font-size: var(--t-xl); font-weight: 800; letter-spacing: -.015em; color: #f1dcc0; }
+:root[data-efir] .dj-head .sub { color: #b9a583; }
+:root[data-efir] .dj-panel .sug { background: rgba(0, 0, 0, .22); }
+:root[data-efir] .dj-panel .sug .a { color: #b9a583; }
+:root[data-efir] .efir-two { margin-top: 26px; }
+:root[data-efir] .ef-queue > h2 { font-family: var(--display); font-size: var(--t-xl); font-weight: 800; letter-spacing: -.015em; color: var(--text); }
+:root[data-efir] .ef-shelf { margin-top: 6px; }
+
+/* ===== низ, варіант 2: одна стрічка «далі в ефірі» + «Щойно грало» списком праворуч ===== */
+@media (min-width: 901px) {
+  :root[data-niz="2"] #viewEfir { display: none; grid-template-columns: minmax(0, 13fr) minmax(0, 8fr); grid-auto-flow: dense; column-gap: 18px; }
+  :root[data-niz="2"] body.route-efir #viewEfir { display: grid; }
+  :root[data-niz="2"] #viewEfir > * { grid-column: 1 / -1; }
+  :root[data-niz="2"] .efir-two { display: contents; }
+  :root[data-niz="2"] .efir-two > section { grid-column: 1; }
+  :root[data-niz="2"] .efir-two > section { margin-top: 0; }
+  :root[data-niz="2"] #viewEfir > .ef-shelf { grid-column: 2; grid-row: span 2; align-self: start; margin-top: 26px; padding: 16px; border: 1px solid var(--line); border-radius: var(--radius); background: color-mix(in srgb, var(--panel) 70%, transparent); }
+  :root[data-niz="2"] .ef-shelf .hm-shelf-h { margin: 0 0 8px; }
+  :root[data-niz="2"] .ef-shelf .hm-covers { grid-auto-flow: row; grid-auto-columns: auto; grid-template-columns: minmax(0, 1fr); gap: 0; overflow: visible; }
+  :root[data-niz="2"] .ef-shelf .hm-cv { grid-template-columns: 46px minmax(0, 1fr); align-items: center; gap: 12px; padding: 8px 2px; box-shadow: 0 1px 0 var(--line); }
+  :root[data-niz="2"] .ef-shelf .hm-cv:nth-child(n + 9) { display: none; }
+  :root[data-niz="2"] .ef-shelf .hm-cv img { width: 46px; height: 46px; border-radius: 8px; box-shadow: none; }
+  /* черга й поради зшиті в одну стрічку: у черги нема нижнього краю, у порад — верхнього */
+  :root[data-niz="2"] .efir-two > .ef-queue { margin-top: 26px; border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+  :root[data-niz="2"] .efir-two > .dj-panel { margin-top: -18px; border-top-left-radius: 0; border-top-right-radius: 0; }
+  :root[data-niz="2"] .dj-head img { top: 0; width: 56px; height: 56px; margin: 0; }
+}
+
+/* ===== телефон ===== */
+@media (max-width: 900px) {
+  :root[data-efir="a"] #viewEfir .now-panel { min-height: calc(var(--sky-h) - var(--sky-fg) - 12px); padding: 8px 4px 0; align-content: start; }
+  :root:is([data-efir="a"], [data-efir="b"]) .now { grid-template-columns: 104px minmax(0, 1fr); gap: 0 14px; }
+  :root:is([data-efir="a"], [data-efir="b"]) .now .title { font-size: 1.55em; -webkit-line-clamp: 3; line-clamp: 3; }
+  :root[data-efir] .now .bigplay { order: 0; margin-right: 0; width: 58px; height: 58px; }
+  :root:is([data-efir="a"], [data-efir="b"]) .now .actions .reacts { margin-left: 0; border: 0; border-top: 1px solid rgba(255, 255, 255, .16); border-radius: 0; background: none; padding: 8px 0 0; }
+  :root[data-efir] .ef-add .row { padding: 6px; border-radius: 16px; }
+  :root[data-efir] .ef-add #q { height: 44px; padding: 0 10px; font-size: var(--t-m); }
+  :root[data-efir] .ef-add #addBtn { height: 44px; padding: 0 16px; border-radius: 11px; font-size: var(--t-m); }
+  :root[data-efir] .ef-add #micBtn { width: 44px; height: 44px; border-radius: 11px; }
+  :root[data-efir="c"] .ef-add { min-height: calc(var(--sky-h) - var(--sky-fg) - 12px); padding: 8px 4px 0; gap: 12px; }
+  /* програвач на телефоні — як звичайна панель: обкладинка й назва поруч, смужка й кнопки під ними */
+  :root[data-efir="c"] .now .nowinfo { display: contents; }
+  :root[data-efir="c"] .now { grid-template-columns: 76px minmax(0, 1fr); gap: 0 12px; align-items: start; }
+  :root[data-efir="c"] .now .title { grid-column: 2; align-self: end; white-space: normal; }
+  :root[data-efir="c"] .now .artist, :root[data-efir="c"] .now .why { grid-column: 2; }
+  :root[data-efir="c"] .now .actions { grid-column: 1 / -1; grid-row: auto; margin-top: 12px; justify-content: space-between; }
+  :root[data-efir="c"] .now .progline { grid-column: 1 / -1; }
+  :root[data-efir="c"] .ef-add #q { height: 46px; }
+  :root[data-efir="c"] .ef-add #addBtn { height: 46px; padding: 0 18px; }
+  :root[data-efir="c"] .ef-add #micBtn { width: 46px; height: 46px; }
+  /* назва й виконавець тримаються купи посередині обкладинки, а не розтягуються на всю її висоту */
+  :root:is([data-efir="a"], [data-efir="b"]) .now { align-items: start; }
+  :root:is([data-efir="a"], [data-efir="b"]) .now .title { align-self: end; }
+  :root:is([data-efir="a"], [data-efir="b"]) .now .artist { align-self: start; }
+  :root:is([data-efir="a"], [data-efir="b"]) .now .progline { margin-top: 16px; }
+  :root:is([data-efir="a"], [data-efir="b"]) .now .actions > button:not(.bigplay) { min-height: 44px; }
+  :root[data-efir] .dj-head img { width: 60px; height: 60px; margin: -26px 0 0 -2px; }
+  :root[data-efir] .efir-two { margin-top: 14px; }
+}

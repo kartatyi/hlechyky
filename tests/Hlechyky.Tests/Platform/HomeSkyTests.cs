@@ -54,9 +54,9 @@ public class HomeSkyTests
     }
 
     /// <summary>
-    /// «Смуга річки»: у чотирьох розділах угорі той самий пейзаж низькою смугою й назва розділу в небі. Зшито трьома
-    /// файлами: розмітка назв (index.html), клас sky-strip на body (app.js) і правила під нього (polyva.css). За столом
-    /// гри смуги бути не може — там потрібне місце.
+    /// У чотирьох розділах угорі той самий пейзаж, що на головній (і тієї самої висоти), і назва розділу в небі. Зшито
+    /// трьома файлами: розмітка назв (index.html), клас sky-sec на body (app.js) і правила під нього (polyva.css). За
+    /// столом гри сцени бути не може — там потрібне місце.
     /// </summary>
     [Theory]
     [InlineData("viewEfir", "Ефір")]
@@ -74,16 +74,20 @@ public class HomeSkyTests
     }
 
     [Fact]
-    public void The_strip_is_switched_by_the_route_and_gives_way_to_a_game_table()
+    public void The_section_scene_is_switched_by_the_route_and_gives_way_to_a_game_table()
     {
         var css = Web("static/polyva.css");
         var js = Web("app.js");
-        Assert.Matches(@"classList\.toggle\('sky-strip',[^;]*'efir'[^;]*'lib'[^;]*'games'[^;]*'stats'", js);
-        Assert.Contains("body.sky-strip:not(.g-room) .sky-scene", css);
-        Assert.Contains("body.sky-strip:not(.g-room) .sec-top { display: block; }", css);
-        Assert.Matches(@"(?m)^\.sec-top \{ display: none; \}", css);   // поза смугою (за столом гри) назви розділу нема
-        // жодне правило смуги не діє за столом гри
-        var loose = Regex.Matches(css, @"(?m)^body\.sky-strip(?!:not\(\.g-room\))[^{]*\{").Select(m => m.Value).Where(r => !r.Contains(".hellobar")).ToList();
-        Assert.True(loose.Count == 0, "правила смуги без :not(.g-room): " + string.Join(" ", loose));
+        Assert.Matches(@"classList\.toggle\('sky-sec',[^;]*'efir'[^;]*'lib'[^;]*'games'[^;]*'stats'", js);
+        Assert.Contains("body.sky-sec:not(.g-room) .sky-scene { display: block; }", css);
+        Assert.Contains("body.sky-sec:not(.g-room) .sec-top { display: block; }", css);
+        Assert.Matches(@"(?m)^\.sec-top \{ display: none; \}", css);   // поза сценою (за столом гри) назви розділу нема
+        // сцена в розділах тієї самої висоти, що на головній
+        var home = Regex.Match(css, @"(?m)^body\.route-home \{ (--sky-h: [^}]*)\}").Groups[1].Value.Trim();
+        Assert.NotEqual("", home);
+        Assert.Contains("body.sky-sec:not(.g-room) { " + home + " }", css);
+        // жодне правило сцени розділів не діє за столом гри
+        var loose = Regex.Matches(css, @"(?m)^\s*body\.sky-sec(?!:not\(\.g-room\))[^{]*\{").Select(m => m.Value).Where(r => !r.Contains(".hellobar")).ToList();
+        Assert.True(loose.Count == 0, "правила сцени розділів без :not(.g-room): " + string.Join(" ", loose));
     }
 }

@@ -267,9 +267,7 @@
     // Беремо середнє між «сьогоднішнім полуднем» і «літнім»: узимку опівдні світило стоїть на півдорозі, улітку — вгорі.
     // Нижче обрію воно тоне в далеких пагорбах. Угорі сцени лежить шапка сайту — під неї світила не заходять.
     const hdr = (document.querySelector('header') || {}).offsetHeight || 56;
-    // Малюнок може звисати нижче сцени (низька смуга пейзажу в розділах): тоді обрій ближче до її низу.
-    const off = svg ? parseFloat(getComputedStyle(svg).bottom) || 0 : 0;
-    const horizon = HORIZON * s + off, room = Math.max(60, H - horizon - hdr - 48);
+    const horizon = HORIZON * s, room = Math.max(60, H - horizon - hdr - 48);
     const yOf = (b) => Math.min(H - hdr - 36, horizon + (b.alt >= 0 ? (b.alt / Math.max(12, Math.sqrt(b.top * pos.sumTop))) * room : b.alt * 3.3 * s));
     const put = (name, x, y) => { el.style.setProperty('--' + name + 'l', ((x - left) * s).toFixed(1) + 'px'); el.style.setProperty('--' + name + 'b', y.toFixed(1) + 'px'); };
     put('o', xOf(pos.sun), yOf(pos.sun));
@@ -283,7 +281,7 @@
     // птахи: місце зграї — частка видимої ширини й висоти неба (від шапки до далеких пагорбів), самі птахи — в одиницях малюнка
     const bg = el.querySelector('.ld-birds');
     if (bg) {
-      const top = Math.max(ART_Y + 6, ART_Y + ART_H + (off - Math.min((svg && svg.clientHeight) || H, H - hdr - 10)) / s), bot = 296;
+      const top = Math.max(ART_Y + 6, ART_Y + ART_H - Math.min((svg && svg.clientHeight) || H, H - hdr - 10) / s), bot = 296;
       bg.innerHTML = flocks.map((f) => {
         // зграї тримаються відкритого неба: на широкому екрані — між заголовком і балачками (там, де ходять світила),
         // низькі — ще вужче, над річкою між берегами (з боків там уже ліс); на телефоні — на всю ширину

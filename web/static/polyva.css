@@ -559,32 +559,21 @@ body.playing header .brand .mk-rays { animation: mk-rays 2.4s ease-in-out infini
 @keyframes mk-rays { 50% { opacity: .38; } }
 @media (prefers-reduced-motion: reduce) { body.playing header .brand .mk-rays { animation: none; } }
 
-/* ---- розділи у світі головної: «Смуга річки» (вибрано 17.11). Угорі «Ефіру», «Бібліотеки», «Ігор» і «Хто скільки» —
-   той самий пейзаж, що на головній, але низькою смугою: небо, сонце чи місяць, погода, міст, береги й вода. Назва
-   розділу стоїть у небі (.sec-top в index.html; живий рядок під нею пише web/home.js), шапка прозора, поки сторінку
-   не прокрутили. Клас sky-strip на body ставить app.js (applyRoute); за столом гри (g-room) смуги нема — там потрібне
-   місце. Малюнок більший за смугу й звисає нижче неї (sky.js бере це до уваги, коли ставить світила й птахів): лінія
-   води стоїть на тій самій висоті за будь-якої ширини вікна (76px − 10.15vw: 10.15 % ширини — це від води до низу
-   малюнка). Латаття у смузі сховано: воно стояло б рівно під краєм першого блока й стирчало з-під нього цятками. ---- */
+/* ---- розділи у світі головної: сцена на весь зріст. Угорі «Ефіру», «Бібліотеки», «Ігор» і «Хто скільки» — той самий
+   пейзаж і тієї самої висоти, що на головній: назва розділу стоїть у небі (.sec-top в index.html; живий рядок під нею
+   пише web/home.js), перший блок розділу лягає на передній план, шапка прозора, поки сторінку не прокрутили.
+   17.11 було вибрано низьку «Смугу річки», 18.11 — «я передумав показувати лише смугу. давай більший варіант».
+   Клас sky-sec на body ставить app.js (applyRoute); за столом гри (g-room) сцени нема — там потрібне місце. ---- */
 .sec-top { display: none; }
-.sec-top .hm-top h1 { font-size: clamp(1.9em, 2.6vw, 2.5em); }
-body.sky-strip:not(.g-room) { --sky-h: 210px; --sky-fg: 62px; }
-body.sky-strip:not(.g-room) .sec-top { display: block; }
-body.sky-strip:not(.g-room) .sky-scene {
-  display: block;
-  -webkit-mask-image: linear-gradient(#000 calc(100% - 66px), transparent); mask-image: linear-gradient(#000 calc(100% - 66px), transparent);
-}
-body.sky-strip:not(.g-room):not(.scrolled) header::before { opacity: 0; }
-body.sky-strip:not(.g-room):not(.scrolled) header::after { display: none; }
-body.sky-strip:not(.g-room) .sky-art svg { inset: auto 0 calc(76px - 10.15vw) 0; height: auto; aspect-ratio: 2000 / 470; }
-body.sky-strip:not(.g-room) .sky-clouds { height: 48%; }
-body.sky-strip:not(.g-room) :is(.ld-pad, .ld-pad-s, .ld-pad-r, .ld-fl, .ld-fl-in, .ld-fl-c, .ld-fl-st, .ld-fl-rf, .ld-fl-glow, .ld-fly) { display: none; }
+body.sky-sec:not(.g-room) { --sky-h: 390px; --sky-fg: 150px; }
+body.sky-sec:not(.g-room) .sec-top { display: block; }
+body.sky-sec:not(.g-room) .sky-scene { display: block; }
+body.sky-sec:not(.g-room):not(.scrolled) header::before { opacity: 0; }
+body.sky-sec:not(.g-room):not(.scrolled) header::after { display: none; }
 /* «Бібліотека» на широкому екрані — сітка «меню | список»: назва розділу йде над обома колонками */
 #viewLib > .sec-top { grid-column: 1 / -1; }
 /* привітання гостю лишається над сценою, а не під нею */
-body.sky-strip .hellobar { position: relative; z-index: 1; }
-/* телефон: малюнок, як і на головній, 290 px заввишки (видно середину — міст), смуга нижча */
+body.sky-sec .hellobar { position: relative; z-index: 1; }
 @media (max-width: 900px) {
-  body.sky-strip:not(.g-room) { --sky-h: 150px; --sky-fg: 44px; }
-  body.sky-strip:not(.g-room) .sky-art svg { inset: auto 0 -79px 0; height: 290px; aspect-ratio: auto; }
+  body.sky-sec:not(.g-room) { --sky-h: 250px; --sky-fg: 96px; }
 }
