@@ -1356,66 +1356,8 @@
   // Клік по кружечку — картка людини (її відкриває people.js), по решті чипа — хто саме слухає.
   $('listeners').onclick = (e) => { if (state && !e.target.closest('[data-who]')) toast(listenersText()); };
 
-  // ТИМЧАСОВО — проби вигляду «Ефіру» (прибрати разом зі static/efir-proby.css, щойно вигляд вибрано):
-  //   ?efir=a|b|c — як пісня стоїть у сцені; ?niz=1|2 — черга й поради двома блоками чи однією стрічкою;
-  //   ?demo — на робочому сервері радіо вимкнено, тож пісню в ефірі, чергу й поради підмальовуємо з того, що вже грало
-  //   (/api/history): лише вигляд, натискання тут нічого не роблять.
-  const probe = new URLSearchParams(location.search);
-  let demoList = null, demoStart = 0;
-  function demoState() {
-    if (!demoList) {
-      if (demoList === null) {
-        demoList = false;
-        api('GET', '/api/history?limit=160').then((d) => {
-          const seen = new Set();
-          const all = (Array.isArray(d) ? d : []).filter((h) => h.track && h.track.thumbUrl && !seen.has(h.track.id) && seen.add(h.track.id));
-          // не ті самі пісні, що на полиці «Щойно грало» (там останні 14)
-          demoList = all.length >= 26 ? all.slice(14, 26) : all.slice(0, 12);
-          if (demoList.length < 9) demoList = false; else render();
-        }).catch(() => {});
-      }
-      return;
-    }
-    const h = demoList, t0 = h[0].track, dur = t0.durationSec || 200, who = me.nick || 'гість';
-    if (!demoStart) demoStart = Date.now() - dur * 380 - (state.streamDelaySeconds || 0) * 1000;
-    state.liquidsoapOk = true;
-    state.listeners = 3;
-    state.now = { track: t0, source: 'user', itemId: 'demo-now', requestedBy: who, reason: null, via: null, startedAt: new Date(demoStart).toISOString(),
-      durationSec: dur, likers: [who, state.djName], skipPending: false, playId: 1 };
-    state.queue = h.slice(1, 4).map((x, i) => ({ itemId: 'demo-q' + i, status: i ? 'ready' : 'dispatched', error: null, requestedBy: who,
-      via: i === 2 ? 'suggestion' : null, addedAt: new Date(demoStart).toISOString(), track: x.track }));
-    state.autoNext = { itemId: 'demo-a', status: 'ready', error: null, track: h[4].track, reason: '' };
-    state.suggestions = h.slice(5, 8).map((x, i) => ({ itemId: 'demo-s' + i, track: x.track, reason: '' }));
-    state.suggestSeed = t0;
-    state.suggestSeedNote = '';
-  }
-  if (/^[abc]$/.test(probe.get('efir') || '')) {
-    document.documentElement.dataset.efir = probe.get('efir');
-    document.documentElement.dataset.niz = probe.get('niz') === '2' ? '2' : '1';
-    const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = '/static/efir-proby.css'; document.head.appendChild(css);
-    // «Що врубаємо?» великим рядком над полем — для проби «в»
-    const ask = document.createElement('div'); ask.className = 'ef-ask'; ask.textContent = 'Що врубаємо?';
-
-    $('q').closest('section').classList.add('ef-add');
-    $('q').closest('section').prepend(ask);
-    $('queue').closest('section').classList.add('ef-queue');
-    // полиця «Щойно грало» внизу сторінки — тими самими обкладинками, що на головній
-    const shelf = document.createElement('section'); shelf.className = 'hm-shelf ef-shelf'; shelf.hidden = true;
-    document.querySelector('#viewEfir .libline').before(shelf);
-    api('GET', '/api/history?limit=40').then((d) => {
-      const seen = new Set();
-      const list = (Array.isArray(d) ? d : []).filter((h) => h.track && h.track.thumbUrl && !seen.has(h.track.id) && seen.add(h.track.id)).slice(0, 14);
-      if (list.length < 4) return;
-      shelf.innerHTML = '<div class="hm-shelf-h"><h2>Щойно грало</h2><a href="#lib/history">уся історія →</a></div><div class="hm-covers">'
-        + list.map((h) => `<a class="hm-cv" href="#lib/history" title="${esc((h.track.artist ? h.track.artist + ' — ' : '') + h.track.title)}">
-          <img src="${esc(h.track.thumbUrl)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer"><span><b>${esc(h.track.title)}</b><small>${esc(h.track.artist || '')}</small></span></a>`).join('') + '</div>';
-      shelf.hidden = false;
-    }).catch(() => {});
-  }
-
   function render() {
     if (!state) return;
-    if (probe.has('demo')) demoState();
     $('siteName').textContent = state.siteName;
     $('micBtn').hidden = !state.voiceMaxSeconds || !canRecord();   // без https мікрофона браузер не дасть, нема чого й дражнити
     renderNow();
@@ -2959,7 +2901,7 @@
     if (r === 'games') HGames.show(head === 'games' ? tail : ''); else HGames.hide();
     if (r === 'stats' || r === 'who') HPeople.show(r, tail); else HPeople.hide();
     if (r === 'lavka') HLavka.show(tail); else HLavka.hide();
-    if (window.HHome) { if (r === 'home') HHome.show(); else HHome.hide(); }
+    if (window.HHome) { if (r === 'home') HHome.show(); else HHome.hide(r); }
     if (window.HHistory) { if (r === 'history') HHistory.show(); else HHistory.hide(); }
     if (window.HTryvoga) { if (r === 'tryvoga') HTryvoga.show(); else HTryvoga.hide(); }
     if (window.HGonchar) { if (r === 'gonchar') HGonchar.show(tail); else HGonchar.hide(); }
@@ -3035,9 +2977,7 @@
   // На телефоні довга підказка в полі обрізалась на пів слові («Що врубаємо? Назв») — там лишаємо саме питання.
   const qNarrow = window.matchMedia('(max-width: 560px)');
   const qHint = q.placeholder;
-  // ТИМЧАСОВО (проба ?efir=c): «Що врубаємо?» там стоїть заголовком над полем, тож у полі — що саме писати
-  const paintQHint = () => { q.placeholder = probe.get('efir') === 'c' ? (qNarrow.matches ? 'Назва або посилання' : 'Назва, виконавець або посилання')
-    : qNarrow.matches ? 'Що врубаємо?' : qHint; };
+  const paintQHint = () => { q.placeholder = qNarrow.matches ? 'Що врубаємо?' : qHint; };
   qNarrow.addEventListener?.('change', paintQHint);
   paintQHint();
   let lastResults = [];

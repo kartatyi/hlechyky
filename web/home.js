@@ -9,6 +9,7 @@
   let shown = false, root = null;
   let daily = null, paper = null, loadedAt = 0;
   let popular = null, art = null, recent = null;   // що найбільше грають, афіші ігор (games/art/art.json), що щойно грало
+  let recentAt = 0, where = '', nowKey = null;     // коли питали «щойно грало», який розділ відкрито, яка пісня в ефірі
   const sig = { air: '', people: '', tables: '', daily: '', chat: '', paper: '', hero: '', lead: '', glead: '', posters: '', covers: '' };
 
   const G = () => window.HGames, P = () => window.HPeople;
@@ -145,13 +146,15 @@
       }).join('') + '</div>';
   }
 
-  /// Обкладинки того, що щойно грало: видно смак ефіру, і є на що глянути, поки тихо.
+  /// Обкладинки того, що щойно грало: видно смак ефіру, і є на що глянути, поки тихо. Полиця стоїть на головній і внизу
+  /// «Ефіру»; пісні, що грає зараз, на ній нема — вона й так стоїть вище.
   function coversHtml() {
     if (!recent) return '';
+    const st = o.state(), on = st && st.now && st.now.track && o.onAir(st.now) ? st.now.track.id : null;
     const seen = new Set();
     const list = recent.filter((h) => {
       const t = h.track;
-      if (!t || !t.thumbUrl || seen.has(t.id)) return false;
+      if (!t || !t.thumbUrl || t.id === on || seen.has(t.id)) return false;
       seen.add(t.id);
       return true;
     }).slice(0, 12);
@@ -237,9 +240,9 @@
   }
 
   // ---------------------------------------------------------------------------------------------
-  // назви розділів у небі: над пейзажем угорі «Ефіру» й «Ігор» — по одному живому рядку, як «Одна душа тут…»
-  // на головній (розмітка — .sec-top в index.html). Малюємо завжди, не лише коли відкрита головна: рядок має бути
-  // свіжий тієї миті, коли людина перейшла в розділ.
+  // шматки головної в інших розділах (розмітка — [data-top] в index.html): живий рядок під назвою «Ігор» у небі, як
+  // «Одна душа тут…» на головній, і полиця «Щойно грало» внизу «Ефіру». Малюємо завжди, не лише коли відкрита
+  // головна: усе має бути свіже тієї миті, коли людина перейшла в розділ.
   // ---------------------------------------------------------------------------------------------
   const topSig = {};
   function tops() {
@@ -250,13 +253,10 @@
       const box = document.querySelector('[data-top="' + id + '"]');
       if (box) box.textContent = text;
     };
-    const st = o.state();
-    if (st) {
-      // Що грає, стоїть просто під назвою — рядок каже те, чого там нема: скільки нас слухає й скільки пісень у черзі.
-      const n = st.now, q = (st.queue || []).length, ears = Math.max(st.listeners || 0, (st.listeningNicks || []).length);
-      const air = !(n && n.track && o.onAir(n)) ? 'Зараз тиша' : !ears ? 'Поки ніхто не слухає'
-        : ears === 1 ? 'Слухає одна душа' : (ears % 10 === 1 && ears % 100 !== 11 ? 'Слухає ' : 'Слухають ') + plural(ears, 'душа', 'душі', 'душ');
-      set('efir', air + (q ? ', у черзі ' + plural(q, 'пісня', 'пісні', 'пісень') : ', черга порожня') + '.');
+    const shelf = document.querySelector('[data-top="covers"]');
+    if (shelf && o.state()) {
+      const html = coversHtml();
+      if (topSig.covers !== html) { topSig.covers = html; shelf.innerHTML = html; shelf.hidden = !html; }
     }
     const g = G();
     const total = o.me.games === false || !g ? 0 : g.total || 0;
@@ -268,6 +268,14 @@
   }
 
   function paint() {
+    // Змінилась пісня — полиця «Щойно грало» підтягується сама: в «Ефірі» сидять годинами. Трохи згодом: запис про
+    // програвання сервер робить тієї ж миті, що й шле новий стан.
+    const now = o && o.state() && o.state().now, key = now && now.track ? String(now.track.id) : '';
+    if (o && o.state() && key !== nowKey) {
+      const first = nowKey === null;
+      nowKey = key;
+      if (!first && (shown || where === 'efir')) setTimeout(() => loadRecent(true), 1500);
+    }
     tops();
     if (!shown || !root) return;
     const st = o.state();
@@ -303,7 +311,7 @@
     loadedAt = Date.now();
     if (o.me.games !== false) o.api('GET', '/api/games/daily').then((d) => { daily = d; paint(); }).catch(() => { daily = daily || { puzzles: [] }; paint(); });
     o.api('GET', '/api/stats/gazette').then((d) => { paper = d; paint(); }).catch(() => { /* без вісника сторінка теж ціла */ });
-    o.api('GET', '/api/history?limit=24').then((d) => { recent = Array.isArray(d) ? d : []; paint(); }).catch(() => { /* без обкладинок — без полиці */ });
+    loadRecent(false);
     if (o.me.games !== false) {
       o.api('GET', '/api/games/popular?days=30').then((d) => { popular = (d && d.games) || []; paint(); }).catch(() => { popular = []; });
       if (!art) fetch('/games/art/art.json').then((r) => (r.ok ? r.json() : null)).then((m) => { art = m || { b: {} }; paint(); }).catch(() => { art = { b: {} }; });
@@ -311,19 +319,30 @@
 
   }
 
+  /// Що щойно грало — для полиці обкладинок: не частіше ніж раз на хвилину, хіба що змінилась пісня в ефірі.
+  function loadRecent(force) {
+    if (!o || (!force && Date.now() - recentAt < 60000)) return;
+    recentAt = Date.now();
+    o.api('GET', '/api/history?limit=24').then((d) => { recent = Array.isArray(d) ? d : []; paint(); }).catch(() => { /* без обкладинок — без полиці */ });
+  }
+
   window.HHome = {
     init(opts) { o = opts; if (o.esc) esc = o.esc; },
     show() {
       mount();
       shown = true;
+      where = 'home';
       // Каталог ігор (назви й значки) може ще їхати: домалюємо, коли приїде.
       const g = G();
       if (g && g.ready) g.ready().then(paint).catch(() => {});
       load(false);
       paint();
     },
-    hide() {
+    /// Відкрито інший розділ (route — який саме): головна ховається, а її шматки в розділах лишаються свіжими.
+    hide(route) {
       shown = false;
+      where = route || '';
+      if (where === 'efir') loadRecent(false);
       // Каталог ігор міг ще їхати, коли ми рахували рядок для «Ігор».
       const g = G();
       if (g && g.ready && !topSig.games) g.ready().then(tops).catch(() => {});

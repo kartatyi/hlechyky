@@ -54,12 +54,12 @@ public class HomeSkyTests
     }
 
     /// <summary>
-    /// У чотирьох розділах угорі той самий пейзаж, що на головній (і тієї самої висоти), і назва розділу в небі. Зшито
-    /// трьома файлами: розмітка назв (index.html), клас sky-sec на body (app.js) і правила під нього (polyva.css). За
-    /// столом гри сцени бути не може — там потрібне місце.
+    /// У чотирьох розділах угорі той самий пейзаж, що на головній (і тієї самої висоти). У «Бібліотеці», «Іграх» і «Хто
+    /// скільки» в небі стоїть назва розділу, в «Ефірі» — сама пісня (окремий тест нижче). Зшито трьома файлами:
+    /// розмітка (index.html), клас sky-sec на body (app.js) і правила під нього (polyva.css). За столом гри сцени бути
+    /// не може — там потрібне місце.
     /// </summary>
     [Theory]
-    [InlineData("viewEfir", "Ефір")]
     [InlineData("viewLib", "Бібліотека")]
     [InlineData("viewGames", "Ігри")]
     [InlineData("viewStats", "Хто скільки")]
@@ -71,6 +71,39 @@ public class HomeSkyTests
         var head = html.Substring(at, Math.Min(900, html.Length - at));
         Assert.Matches(@"class=""hm-skybox sec-top"">.*<h1>" + Regex.Escape(title) + "</h1>", head);
         Assert.Contains("data-sky-text", head);   // поруч із рядком розділу — погода, як на головній
+    }
+
+    /// <summary>
+    /// «Ефір» — «Пісня в небі»: заголовок сторінки — те, що грає, без коробки й без слова «Ефір»; нижче — поле
+    /// «Закинути», черга рівним списком, Глек і полиця «Щойно грало», яку малює той самий код, що й на головній.
+    /// </summary>
+    [Fact]
+    public void Efir_opens_with_the_song_in_the_sky()
+    {
+        var html = Web("index.html");
+        int from = html.IndexOf("id=\"viewEfir\"", StringComparison.Ordinal), to = html.IndexOf("id=\"viewLib\"", StringComparison.Ordinal);
+        Assert.True(from >= 0 && to > from);
+        var efir = html.Substring(from, to - from);
+        // перший блок — пісня, і саме він тримає висоту неба (.hm-skybox), а не назва розділу
+        Assert.Matches(@"(?s)^id=""viewEfir"">\s*(<!--.*?-->\s*)?<section class=""now-panel hm-skybox""[^>]*>.*?id=""now""", efir);
+        Assert.DoesNotContain("sec-top", efir);
+        Assert.DoesNotContain("<h1>", efir);
+        int add = efir.IndexOf("class=\"ef-add\"", StringComparison.Ordinal), queue = efir.IndexOf("class=\"panel ef-queue\"", StringComparison.Ordinal),
+            glek = efir.IndexOf("dj-panel", StringComparison.Ordinal), shelf = efir.IndexOf("data-top=\"covers\"", StringComparison.Ordinal);
+        Assert.True(add > 0 && add < queue && queue < glek && glek < shelf, "порядок: пісня, поле «Закинути», черга, Глек, «Щойно грало»");
+        Assert.Contains("[data-top=\"covers\"]", Web("home.js"));
+
+        var css = Web("static/polyva.css");
+        int at = css.IndexOf("«Ефір»: пісня в небі", StringComparison.Ordinal);
+        Assert.True(at >= 0, "у polyva.css нема блока «Ефіру»");
+        // Клас .now у кількох іграх — ознака стану («зараз»): білий текст і сітку пісні їм давати не можна.
+        var loose = Regex.Matches(css.Substring(at), @"(?m)^\s*\.now[ {][^{]*\{").Select(m => m.Value.Trim()).ToList();
+        Assert.True(loose.Count == 0, "правила пісні без .now-panel: " + string.Join(" ", loose));
+
+        // проби вигляду (?efir, ?niz, ?demo) були тимчасові
+        Assert.False(File.Exists(Paths.Resolve("web/static/efir-proby.css")), "проби вигляду «Ефіру» мали зникнути");
+        Assert.DoesNotContain("efir-proby", Web("app.js"));
+        Assert.DoesNotContain("demoState", Web("app.js"));
     }
 
     [Fact]
