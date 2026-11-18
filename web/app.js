@@ -4066,14 +4066,6 @@
 
   // ---------- library: history / likes / playlists / stats ----------
   $('libTabs').querySelectorAll('button').forEach((b) => b.onclick = () => go('#lib/' + b.dataset.tab));
-  // ТИМЧАСОВО — проби вигляду вкладок «Хто скільки» (прибрати разом зі static/stat-proby.css, щойно вигляд вибрано):
-  //   ?stat=a — вкладки стоять у небі замість назви розділу; ?stat=b — назва лишається, вкладки на березі темним склом.
-  (() => {
-    const v = new URLSearchParams(location.search).get('stat');
-    if (v !== 'a' && v !== 'b') return;
-    document.documentElement.dataset.stat = v;
-    const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = '/static/stat-proby.css'; document.head.appendChild(css);
-  })();
   /// Шукаємо по тому, що вже на екрані: сервер тут ні до чого, і відповідь миттєва.
   function filterLib() {
     const box = $('lib');

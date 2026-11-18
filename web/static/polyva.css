@@ -563,8 +563,9 @@ body.playing header .brand .mk-rays { animation: mk-rays 2.4s ease-in-out infini
 @media (prefers-reduced-motion: reduce) { body.playing header .brand .mk-rays { animation: none; } }
 
 /* ---- розділи у світі головної: сцена на весь зріст. Угорі «Ефіру», «Бібліотеки», «Ігор» і «Хто скільки» — той самий
-   пейзаж і тієї самої висоти, що на головній: назва розділу стоїть у небі (.sec-top в index.html; живий рядок під нею
-   пише web/home.js), перший блок розділу лягає на передній план, шапка прозора, поки сторінку не прокрутили.
+   пейзаж і тієї самої висоти, що на головній: у небі стоїть головне з розділу (пісня, вкладки, «Зараз» — блоки нижче;
+   назва розділу .sec-top лишилась тільки в «Іграх», коли показати нічого), перший блок розділу лягає на передній
+   план, шапка прозора, поки сторінку не прокрутили.
    17.11 було вибрано низьку «Смугу річки», 18.11 — «я передумав показувати лише смугу. давай більший варіант».
    Клас sky-sec на body ставить app.js (applyRoute); за столом гри (g-room) сцени нема — там потрібне місце. ---- */
 .sec-top { display: none; }
@@ -821,4 +822,26 @@ body.g-nowsky:not(.g-room) .gl-strip button.primary { min-height: 38px; padding:
   body.g-nowsky:not(.g-room) .gl-strip > * { flex-basis: 270px; padding: 10px 12px; }
   /* «☀ Сьогодні · щоденний глек №70» на вузькому — у два рядки, а не двома стовпчиками */
   .gdaybox .gday-ht h3 { flex-wrap: wrap; gap: 0 6px; font-size: var(--t-l); }
+}
+
+/* ---- «Хто скільки»: вкладки в небі (раунд hlechyky-stat, 18.11) ---- Слів «Хто скільки» в небі нема: заголовок
+   сторінки — самі вкладки («Огляд», «Глек», «Графіки»…), відкрита підкреслена жовтим; перемикач періоду стоїть на
+   темному склі внизу неба. Рядок .sthead малює web/people.js і дає йому .hm-skybox — той тримає висоту неба.
+   Раніше вкладки були сірим по темному березі, без підкладки: їх ледь було видно. */
+#stats > .sthead { flex-direction: column; flex-wrap: nowrap; align-items: flex-start; justify-content: flex-start; gap: 0; }
+#stats .sttabs { align-items: baseline; gap: 6px 26px; }
+#stats .sttabs button {
+  padding: 0 0 7px; border: 0; border-radius: 0; background: none; color: rgba(255, 255, 255, .6); text-shadow: 0 2px 18px rgba(0, 0, 0, .45);
+  font-family: var(--display); font-size: clamp(1.5em, 2.3vw, 2.2em); font-weight: 800; letter-spacing: -.025em; line-height: 1.05;
+}
+#stats .sttabs button .st-ico { display: none; }
+#stats .sttabs button:hover { background: none; color: rgba(255, 255, 255, .88); }
+#stats .sttabs button.on { background: linear-gradient(var(--accent), var(--accent)) left bottom / 100% 3px no-repeat; color: #fff; }
+#stats .sttabs .stnew { font-size: .42em; letter-spacing: 0; vertical-align: middle; text-shadow: none; }
+#stats .stper { margin-top: auto; border-color: rgba(255, 255, 255, .16); background: rgba(10, 24, 18, .8); text-shadow: none; }
+#stats .stper button:not(.on) { color: rgba(255, 255, 255, .86); }
+@media (max-width: 900px) {
+  #stats .sttabs { gap: 4px 14px; }
+  #stats .sttabs button { padding-bottom: 5px; font-size: 1.25em; background-size: 100% 2px; }
+  #stats .stper { margin-top: 12px; }
 }

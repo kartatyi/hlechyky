@@ -389,7 +389,8 @@
     // «нове» біля Огляду — доки людина хоч раз туди не зазирнула
     const fresh = ls('statsOverviewSeen', '') !== '1';
     const root = document.getElementById('stats');
-    root.innerHTML = '<div class="sthead panel-lite">'
+    // .hm-skybox — рядок вкладок стоїть у небі й тримає його висоту (static/polyva.css)
+    root.innerHTML = '<div class="sthead hm-skybox">'
       + '<nav class="sttabs" id="statsTabs" aria-label="Що рахуємо">' + tabsHtml(fresh) + '</nav>'
       + periodSeg() + '</div><div class="stbody"></div>';
     wireTabs(root);

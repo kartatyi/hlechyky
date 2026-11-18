@@ -54,14 +54,13 @@ public class HomeSkyTests
     }
 
     /// <summary>
-    /// У чотирьох розділах угорі той самий пейзаж, що на головній (і тієї самої висоти). В «Іграх» і «Хто скільки» в
-    /// небі стоїть назва розділу, в «Ефірі» — сама пісня, у «Бібліотеці» — її вкладки (окремі тести нижче). Зшито
-    /// трьома файлами: розмітка (index.html), клас sky-sec на body (app.js) і правила під нього (polyva.css). За столом
-    /// гри сцени бути не може — там потрібне місце.
+    /// У чотирьох розділах угорі той самий пейзаж, що на головній (і тієї самої висоти). В «Іграх» у небі стоїть
+    /// назва розділу (або блок «Зараз»), в «Ефірі» — сама пісня, у «Бібліотеці» й «Хто скільки» — їхні вкладки
+    /// (окремі тести нижче). Зшито трьома файлами: розмітка (index.html), клас sky-sec на body (app.js) і правила під
+    /// нього (polyva.css). За столом гри сцени бути не може — там потрібне місце.
     /// </summary>
     [Theory]
     [InlineData("viewGames", "Ігри")]
-    [InlineData("viewStats", "Хто скільки")]
     public void Each_section_opens_with_its_name_in_the_sky(string view, string title)
     {
         var html = Web("index.html");
@@ -163,6 +162,34 @@ public class HomeSkyTests
         // проби вигляду (?igry, ?dnes) були тимчасові
         Assert.False(File.Exists(Paths.Resolve("web/static/igry-proby.css")), "проби вигляду «Ігор» мали зникнути");
         Assert.DoesNotContain("igry-proby", Web("app.js"));
+    }
+
+    /// <summary>
+    /// «Хто скільки» — «Вкладки в небі»: слів «Хто скільки» в небі нема, заголовок сторінки — самі вкладки, перемикач
+    /// періоду — внизу неба. Рядок вкладок малює people.js і дає йому .hm-skybox (той тримає висоту неба); вигляд —
+    /// у polyva.css.
+    /// </summary>
+    [Fact]
+    public void Stats_open_with_their_tabs_in_the_sky()
+    {
+        var html = Web("index.html");
+        int from = html.IndexOf("id=\"viewStats\"", StringComparison.Ordinal), to = html.IndexOf("id=\"viewWho\"", StringComparison.Ordinal);
+        Assert.True(from >= 0 && to > from);
+        var stats = html.Substring(from, to - from);
+        Assert.Contains("id=\"stats\"", stats);
+        Assert.DoesNotContain("sec-top", stats);
+        Assert.DoesNotContain("<h1>", stats);
+
+        var js = Web("people.js");
+        Assert.Contains("'<div class=\"sthead hm-skybox\">'", js);
+        Assert.Contains("<span class=\"st-ico\">", js);   // значок вкладки ховає вигляд: у небі стоять самі слова
+
+        var css = Web("static/polyva.css");
+        Assert.Contains("#stats .sttabs button .st-ico { display: none; }", css);
+        Assert.Contains("#stats .stper { margin-top: auto;", css);
+        // проби вигляду (?stat) були тимчасові
+        Assert.False(File.Exists(Paths.Resolve("web/static/stat-proby.css")), "проби вигляду «Хто скільки» мали зникнути");
+        Assert.DoesNotContain("stat-proby", Web("app.js"));
     }
 
     [Fact]
