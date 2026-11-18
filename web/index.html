@@ -196,22 +196,25 @@
     </div>
 
     <div class="view" id="viewLib">
-      <!-- Назва розділу в небі, над пейзажем (вигляд — static/polyva.css, .sec-top; живий рядок пише web/home.js). -->
-      <div class="hm-skybox sec-top"><div class="hm-top"><h1>Бібліотека</h1><p class="hm-lead">Усе, що вже грало, улюблене й плейлисти.<span class="hm-wx" data-sky-text hidden></span></p></div></div>
-      <!-- На широкому екрані це бокове меню, на вузькому — чипи у два ряди (без гортання вбік).
-           app.js бачить тут ті самі button[data-tab], що й раніше. Рейтинг і «хто скільки» переїхали в «📊 Хто скільки». -->
-      <nav class="libmenu" id="libTabs" aria-label="Бібліотека">
-        <div class="libgrp">Музика</div>
-        <button data-tab="history" class="on"><span class="ico">🕘</span>Що вже було</button>
-        <button data-tab="likes"><span class="ico">❤</span>Улюблене</button>
-        <button data-tab="playlists"><span class="ico">📂</span>Плейлисти</button>
-        <div class="libgrp">Керування</div>
-        <button data-tab="bans"><span class="ico">🚫</span>Бан</button>
-        <button data-tab="ads" id="adsTab" hidden><span class="ico">📣</span>Реклама</button>
-        <button data-tab="feedback" id="fbTab" hidden><span class="ico">💡</span>Пропозиції <span id="fbTabBadge" class="chip badge" hidden>0</span></button>
-        <button data-tab="photos" id="photosTab" hidden><span class="ico">📷</span>Фото</button>
-        <button data-tab="mod" id="modTab" hidden><span class="ico">🛡</span>Модерація</button>
-        <button data-tab="screen" id="screenTab" hidden><span class="ico">🖥</span>Екран</button>
+      <!-- «Вкладки в небі»: слова «Бібліотека» в небі нема (розділ і так підсвічений у шапці) — заголовок сторінки це самі
+           вкладки, під ними рядок про відкриту (пише app.js). «Бан» і керування — малими кнопками над списком.
+           .hm-skybox тримає висоту неба, тож список лягає на передній план. app.js бачить тут ті самі button[data-tab].
+           Рейтинг і «хто скільки» живуть у «📊 Хто скільки». -->
+      <nav class="lib-nav hm-skybox" id="libTabs" aria-label="Бібліотека">
+        <div class="lib-big">
+          <button data-tab="history" class="on">Що вже було</button>
+          <button data-tab="likes">Улюблене</button>
+          <button data-tab="playlists">Плейлисти</button>
+        </div>
+        <p class="hm-lead" id="libLead"></p>
+        <div class="lib-small">
+          <button data-tab="bans"><span class="ico">🚫</span>Бан</button>
+          <button data-tab="ads" id="adsTab" hidden><span class="ico">📣</span>Реклама</button>
+          <button data-tab="feedback" id="fbTab" hidden><span class="ico">💡</span>Пропозиції <span id="fbTabBadge" class="chip badge" hidden>0</span></button>
+          <button data-tab="photos" id="photosTab" hidden><span class="ico">📷</span>Фото</button>
+          <button data-tab="mod" id="modTab" hidden><span class="ico">🛡</span>Модерація</button>
+          <button data-tab="screen" id="screenTab" hidden><span class="ico">🖥</span>Екран</button>
+        </div>
       </nav>
       <section class="panel libpage">
         <div class="libhead">

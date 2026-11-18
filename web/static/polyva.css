@@ -573,8 +573,7 @@ body.sky-sec:not(.g-room) .sec-top { display: block; }
 body.sky-sec:not(.g-room) .sky-scene { display: block; }
 body.sky-sec:not(.g-room):not(.scrolled) header::before { opacity: 0; }
 body.sky-sec:not(.g-room):not(.scrolled) header::after { display: none; }
-/* «Бібліотека» на широкому екрані — сітка «меню | список»: назва розділу йде над обома колонками */
-#viewLib > .sec-top { grid-column: 1 / -1; }
+
 /* привітання гостю лишається над сценою, а не під нею */
 body.sky-sec .hellobar { position: relative; z-index: 1; }
 @media (max-width: 900px) {
@@ -660,3 +659,137 @@ section.dj-panel { border-color: #4a3a12; background: var(--rough) padding-box, 
   .efir-two { margin-top: 14px; }
 }
 @media (prefers-reduced-motion: reduce) { .ef-queue .qitem.fresh, .ef-queue .qitem.moved { animation: none; } }
+
+/* ---- «Бібліотека»: вкладки в небі (раунд hlechyky-lib, 18.11 — «Вкладки в небі», «Стіна обкладинок», плейлисти —
+   «Плитки») ---- Слова «Бібліотека» в небі нема: заголовок сторінки — три вкладки, відкрита біла й підкреслена, під
+   ними рядок про неї. «Бан» і керування (бачить адмін) — малими кнопками внизу неба, просто над списком. Бокового
+   меню нема, список на всю ширину й гортається разом зі сторінкою. Розмітка — index.html (#viewLib); яка вкладка
+   відкрита, каже data-tab на #viewLib (app.js, applyRoute). */
+.lib-nav { display: flex; flex-direction: column; }
+.lib-nav button { flex: none; }
+.lib-big { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 30px; }
+.lib-big button {
+  padding: 0 0 7px; border: 0; border-radius: 0; background: none; color: rgba(255, 255, 255, .6); text-shadow: 0 2px 18px rgba(0, 0, 0, .45);
+  font-family: var(--display); font-size: clamp(1.7em, 2.6vw, 2.5em); font-weight: 800; letter-spacing: -.025em; line-height: 1.05;
+}
+.lib-big button:hover { background: none; color: rgba(255, 255, 255, .88); }
+.lib-big button.on { background: linear-gradient(var(--accent), var(--accent)) left bottom / 100% 3px no-repeat; color: #fff; }
+#libLead { max-width: 62ch; margin-top: 10px; }
+.lib-small { display: flex; flex-wrap: wrap; gap: 6px; margin-top: auto; padding-top: 14px; }
+.lib-small button { min-height: 34px; padding: 0 12px; border: 1px solid rgba(255, 255, 255, .16); border-radius: 999px; background: rgba(10, 24, 18, .78); color: rgba(255, 255, 255, .86); font-size: var(--t-s); }
+.lib-small button:hover { border-color: rgba(255, 255, 255, .34); color: #fff; }
+.lib-small button.on { border-color: var(--accent); background: var(--panel2); color: #fff; }
+
+/* над списком: назву відкритої вкладки вже сказано в небі, тож лишаються перемикач «Усі / Мої» й пошук в одному рядку;
+   у керування (бан, реклама, записки…) назва стоїть тут, шрифтом заголовків */
+section.libpage { position: relative; padding: 18px; }
+.libhead h2 { font-size: var(--t-xl); font-weight: 800; letter-spacing: -.015em; color: var(--text); }
+.libhead #libFind { width: min(320px, 46%); max-width: none; height: 40px; padding: 0 14px; border-radius: 12px; }
+#viewLib:is([data-tab="history"], [data-tab="likes"], [data-tab="playlists"]) #libTitle { display: none; }
+#viewLib:is([data-tab="history"], [data-tab="likes"]) .libhead { position: absolute; top: 15px; right: 18px; width: min(320px, 46%); margin: 0; }
+#viewLib:is([data-tab="history"], [data-tab="likes"]) .libhead #libFind { width: 100%; }
+#viewLib[data-tab="playlists"] .libhead { display: none; }
+#viewLib:is([data-tab="history"], [data-tab="likes"]) .libpage .tabs.seg { margin-bottom: 12px; }
+#viewLib:is([data-tab="history"], [data-tab="likes"]) .libpage .tabs.seg button { min-height: 34px; padding: 0 14px; border-radius: 10px; font-size: var(--t-m); }
+
+/* дні — підзаголовками; сторінка гортається сама, без вікна у вікні */
+.libpage .list:is(.wall, .flat) { max-height: none; overflow: visible; }
+.libpage .list li.lday { padding: 20px 2px 0; font-family: var(--display); font-size: var(--t-l); font-weight: 700; letter-spacing: -.01em; color: var(--text); }
+.libpage .list li.lday:first-child { padding-top: 6px; }
+.histmore { min-height: 40px; margin-top: 16px; padding: 0 18px; }
+
+/* «Що вже було» й «Улюблене» — стіна обкладинок: плитки по днях, під обкладинкою назва, виконавець і хто закинув */
+.libpage .list.wall { display: grid; grid-template-columns: repeat(auto-fill, minmax(148px, 1fr)); gap: 22px 16px; align-items: start; }
+.libpage .list.wall > :is(li.lday, li.empty) { grid-column: 1 / -1; }
+.libpage .list.wall > li:not(.lday):not(.empty) { position: relative; grid-template-columns: minmax(0, 1fr); gap: 7px; align-content: start; padding: 0; border-radius: 14px; background: none; }
+.libpage .list.wall > li > :is(img, .noimg) {
+  display: block; width: 100%; height: auto; aspect-ratio: 1; border-radius: 14px; background: var(--panel2); box-shadow: 0 8px 20px rgba(0, 0, 0, .35); transition: transform .16s ease;
+}
+.libpage .list.wall > li > .noimg { display: grid; place-items: center; font-size: 2.4em; }
+.libpage .list.wall > li:hover > :is(img, .noimg) { transform: translateY(-3px); }
+.libpage .list.wall .t { font-size: var(--t-s); font-weight: 600; }
+.libpage .list.wall .t .muted { display: block; overflow: hidden; text-overflow: ellipsis; font-weight: 400; }
+.libpage .list.wall .t .sep { display: none; }
+.libpage .list.wall .r { font-size: var(--t-xs); }
+/* кнопки лягають на обкладинку: з мишею — коли навели, на дотику — завжди (тому там вони малі й круглі) */
+.libpage .list.wall .btns {
+  position: absolute; top: 0; left: 0; right: 0; aspect-ratio: 1; flex-wrap: wrap; align-content: flex-end; align-items: flex-end; justify-content: flex-end; gap: 6px; padding: 8px;
+  pointer-events: none; opacity: 0; transition: opacity .15s ease;
+}
+.libpage .list.wall > li:is(:hover, :focus-within) .btns { opacity: 1; }
+.libpage .list.wall .btns button { pointer-events: auto; min-height: 34px; padding: 0 10px; border-color: rgba(255, 255, 255, .18); border-radius: 10px; background: rgba(10, 24, 18, .86); color: #fff; font-size: var(--t-s); }
+.libpage .list.wall .btns button.q { border-color: transparent; background: var(--accent); color: var(--accent-ink); font-weight: 600; }
+@media (hover: none) {
+  .libpage .list.wall .btns { gap: 5px; padding: 6px; opacity: 1; }
+  .libpage .list.wall .btns button { width: 34px; height: 34px; min-height: 0; padding: 0; justify-content: center; border-radius: 50%; font-size: 0; }
+  .libpage .list.wall .btns button.q::before { content: '＋'; font-size: 17px; font-weight: 700; }
+  .libpage .list.wall .btns button.pl::before { content: '📂'; font-size: 14px; }
+  .libpage .list.wall .btns button.vplay { font-size: 13px; }
+}
+
+/* рівний список — бан-лист і треки відкритого плейлиста: рядки без коробок, як черга в «Ефірі» */
+.libpage .list.flat { gap: 0; }
+.libpage .list.flat > li:not(.lday):not(.empty) { grid-template-columns: 52px minmax(0, 1fr) auto; gap: 14px; padding: 9px 6px; border-radius: 0; box-shadow: 0 1px 0 var(--line); font-size: var(--t-m); }
+.libpage .list.flat > li:not(.lday):not(.empty):last-child { box-shadow: none; }
+.libpage .list.flat > li:not(.lday):not(.empty):hover { background: color-mix(in srgb, var(--panel2) 55%, transparent); }
+.libpage .list.flat :is(img, .noimg) { width: 52px; height: 52px; border-radius: 9px; }
+.libpage .list.flat .noimg { display: grid; place-items: center; background: var(--panel2); font-size: var(--t-xl); }
+.libpage .list.flat .t { font-weight: 600; }
+.libpage .list.flat .t .muted { font-weight: 400; }
+.libpage .list.flat .r { margin-top: 2px; }
+.libpage .list.flat .btns { gap: 6px; }
+.libpage .list.flat .btns :is(button, a.chip) { min-height: 36px; padding: 0 12px; border-radius: 10px; font-size: var(--t-s); }
+
+/* «Плейлисти»: «перенести звідкись» — одним великим полем, без пунктирної коробки; самі плейлисти — плитками */
+.libpage .plimp { gap: 8px; margin: 0; padding: 0; border: 0; background: none; }
+.libpage .plimp-head { order: -2; }
+.libpage .plimp-head b { font-size: var(--t-xl); font-weight: 800; letter-spacing: -.015em; }
+.libpage .plimp-row { order: -1; gap: 8px; padding: 8px; border: 1px solid color-mix(in srgb, var(--accent) 38%, var(--line)); border-radius: 18px; background: var(--bg2); }
+.libpage .plimp-row:focus-within { border-color: var(--accent); }
+.libpage .plimp-row input { flex: 1; min-width: 0; height: 46px; padding: 0 12px; border: 0; background: none; font-size: var(--t-m); }
+.libpage .plimp-row button { height: 46px; padding: 0 24px; border-radius: 12px; font-weight: 700; }
+.libpage .pl-new { max-width: 520px; margin: 14px 0 0; }
+.pl-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(176px, 1fr)); grid-auto-flow: dense; gap: 22px 18px; align-items: start; margin-top: 22px; }
+.pl-grid > .pl-tracks { grid-column: 1 / -1; margin: 0; padding: 12px; border-radius: 14px; background: var(--bg2); }
+.pl-grid .pl { position: relative; grid-template-columns: minmax(0, 1fr); gap: 0; align-content: start; padding: 0; border-radius: 16px; }
+.pl-grid .pl:hover { background: none; }
+.pl-grid .pl > :is(img, .noimg) {
+  display: grid; place-items: center; width: 100%; height: auto; aspect-ratio: 1; object-fit: cover; border-radius: 16px; background: var(--panel2); box-shadow: 0 10px 24px rgba(0, 0, 0, .4);
+  font-size: 3em; transition: transform .16s ease;
+}
+.pl-grid .pl > :is(img, .noimg) { cursor: pointer; }
+.pl-grid .pl:hover > :is(img, .noimg) { transform: translateY(-3px); }
+/* відкритий плейлист: його треки стоять під рядом плиток, тож плитка обведена, а над треками — його назва */
+.pl-grid .pl.open > :is(img, .noimg) { outline: 3px solid var(--accent); outline-offset: 3px; }
+.pl-grid .pl.open .name { color: var(--accent); }
+.plt-h { display: flex; align-items: center; gap: 12px; margin: 0 6px 6px; }
+.plt-h b { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--display); font-size: var(--t-l); }
+.plt-h button { flex: none; min-height: 34px; padding: 0 12px; font-size: var(--t-s); }
+.pl-grid .pl .name { margin-top: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--display); font-size: var(--t-l); font-weight: 700; }
+/* ▶ — кругла жовта кнопка в нижньому куті обкладинки (закидає весь плейлист); ✕ — у верхньому, коли навели */
+.pl-grid .pl .btns { position: absolute; top: 0; left: 0; right: 0; aspect-ratio: 1; display: flex; flex-direction: column-reverse; align-items: flex-end; justify-content: space-between; padding: 10px; pointer-events: none; }
+.pl-grid .pl .btns button { pointer-events: auto; }
+.pl-grid .pl .btns .go { width: 48px; height: 48px; padding: 0 0 0 3px; justify-content: center; border-radius: 50%; font-size: 17px; box-shadow: 0 6px 16px rgba(0, 0, 0, .5); }
+.pl-grid .pl .btns .go.busy { padding: 0; }
+.pl-grid .pl .btns .del { width: 32px; height: 32px; padding: 0; justify-content: center; border: 1px solid rgba(255, 255, 255, .18); border-radius: 50%; background: rgba(10, 24, 18, .86); opacity: 0; transition: opacity .15s ease; }
+.pl-grid .pl:is(:hover, :focus-within) .btns .del { opacity: 1; }
+@media (hover: none) { .pl-grid .pl .btns .del { opacity: 1; } }
+
+@media (max-width: 900px) {
+  .lib-big { gap: 4px 14px; }
+  .lib-big button { padding-bottom: 5px; font-size: 1.3em; background-size: 100% 2px; }
+  #libLead { margin-top: 6px; font-size: var(--t-m); }
+  section.libpage { padding: 12px; }
+  #viewLib:is([data-tab="history"], [data-tab="likes"]) .libhead { position: static; width: auto; margin: 0 0 10px; }
+  .libpage .list.wall { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 16px 10px; }
+  .libpage .list.flat > li:not(.lday):not(.empty) { gap: 10px; padding: 8px 2px; }
+  /* назва у два рядки замість «Knockin' On …» */
+  .libpage .list.flat .t { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; white-space: normal; line-height: 1.25; }
+  .libpage .list.flat .btns :is(button, a.chip) { padding: 0 10px; }
+  .libpage .plimp-head b { font-size: var(--t-l); }
+  .libpage .plimp-row { padding: 6px; border-radius: 14px; }
+  .libpage .plimp-row input { height: 42px; padding: 0 8px; }
+  .libpage .plimp-row button { height: 42px; padding: 0 16px; }
+  .pl-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 18px 12px; }
+}
+@media (prefers-reduced-motion: reduce) { .libpage .list.wall > li > :is(img, .noimg), .libpage .list.wall .btns, .pl-grid .pl > :is(img, .noimg), .pl-grid .pl .btns .del { transition: none; } }

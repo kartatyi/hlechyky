@@ -538,27 +538,14 @@ button.vplay { padding: 3px 8px; }
 .sug .btns button { padding: 6px 10px; }
 .sug.empty { display: flex; gap: 10px; align-items: center; justify-content: center; color: var(--muted); padding: 14px 12px; border-style: dashed; opacity: .75; }
 
-/* ---- Бібліотека: бокове меню на широкому, рядок вкладок на вузькому ---- */
-.libmenu { display: flex; gap: 4px; overflow-x: auto; overflow-y: hidden; padding-bottom: 2px; scrollbar-width: none; }
-.libmenu::-webkit-scrollbar { display: none; }
-.libmenu .libgrp { display: none; }
-.libmenu button { flex: none; background: transparent; border-color: transparent; color: var(--muted); padding: 6px 11px; }
-.libmenu button:hover { background: var(--panel2); color: var(--text); }
-.libmenu button.on { background: var(--panel2); border-color: var(--line); color: var(--text); }
+/* ---- Бібліотека: вкладки стоять у небі над списком (вигляд — static/polyva.css, .lib-nav) ---- */
 .libpage { min-width: 0; }
 .libhead { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
 .libhead h2 { margin: 0; flex: none; }
 #libFind { max-width: 260px; margin-left: auto; padding: 6px 10px; font-size: var(--t-s); }
 /* Списки в Бібліотеці тягнуться до низу екрана: це головне, по що сюди заходять. */
 .libpage .list { max-height: calc(100vh - 200px); max-height: calc(100dvh - 200px); }
-@container (min-width: 760px) {
-  /* селектор такий самий, як у правила маршруту вище, інакше display: flex переможе за вагою */
-  body.route-lib #viewLib { display: grid; grid-template-columns: 196px minmax(0, 1fr); gap: 16px; align-items: start; }
-  .libmenu { flex-direction: column; position: sticky; top: 72px; overflow: visible; gap: 2px; }
-  .libmenu .libgrp { display: block; color: var(--muted); font-size: var(--t-xs); text-transform: uppercase; letter-spacing: 1.2px; padding: 12px 11px 4px; }
-  .libmenu .libgrp:first-child { padding-top: 2px; }
-  .libmenu button { justify-content: flex-start; width: 100%; }
-}
+
 
 /* ---- library (history / likes / playlists / stats) ---- */
 .tabs { display: flex; gap: 4px; margin-bottom: 10px; flex-wrap: wrap; }
@@ -974,10 +961,7 @@ body.clk-big:not(.gfull) main { max-width: calc(1600px * var(--clk-z, 1)); }
   body.g-room .tchat.drawer:not(.open) .tc-last { display: none; }
   /* Посеред аркади згорнута шторка лягала на кнопки керування; великими пальцями в балачку однаково не пишуть. */
   body.g-arcade .tchat.drawer:not(.open) { display: none; }
-  /* бокове меню бібліотеки на телефоні — чипи, що переносяться (без гортання вбік, де половину не видно);
-     заголовок і пошук один під одним */
-  .libmenu { flex-wrap: wrap; overflow: visible; gap: 6px; }
-  .libmenu button { background: var(--panel); border-color: var(--line); padding: 6px 11px; }
+  /* заголовок списку бібліотеки й пошук — один під одним */
   .libhead { flex-wrap: wrap; gap: 8px; }
   #libFind { margin-left: 0; max-width: none; flex: 1 1 140px; }
   /* Списки на телефоні гортаються разом зі сторінкою: друга прокрутка всередині першої лише плутала палець. */

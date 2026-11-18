@@ -54,13 +54,12 @@ public class HomeSkyTests
     }
 
     /// <summary>
-    /// У чотирьох розділах угорі той самий пейзаж, що на головній (і тієї самої висоти). У «Бібліотеці», «Іграх» і «Хто
-    /// скільки» в небі стоїть назва розділу, в «Ефірі» — сама пісня (окремий тест нижче). Зшито трьома файлами:
-    /// розмітка (index.html), клас sky-sec на body (app.js) і правила під нього (polyva.css). За столом гри сцени бути
-    /// не може — там потрібне місце.
+    /// У чотирьох розділах угорі той самий пейзаж, що на головній (і тієї самої висоти). В «Іграх» і «Хто скільки» в
+    /// небі стоїть назва розділу, в «Ефірі» — сама пісня, у «Бібліотеці» — її вкладки (окремі тести нижче). Зшито
+    /// трьома файлами: розмітка (index.html), клас sky-sec на body (app.js) і правила під нього (polyva.css). За столом
+    /// гри сцени бути не може — там потрібне місце.
     /// </summary>
     [Theory]
-    [InlineData("viewLib", "Бібліотека")]
     [InlineData("viewGames", "Ігри")]
     [InlineData("viewStats", "Хто скільки")]
     public void Each_section_opens_with_its_name_in_the_sky(string view, string title)
@@ -104,6 +103,45 @@ public class HomeSkyTests
         Assert.False(File.Exists(Paths.Resolve("web/static/efir-proby.css")), "проби вигляду «Ефіру» мали зникнути");
         Assert.DoesNotContain("efir-proby", Web("app.js"));
         Assert.DoesNotContain("demoState", Web("app.js"));
+    }
+
+    /// <summary>
+    /// «Бібліотека» — «Вкладки в небі»: заголовок сторінки — три вкладки, без слова «Бібліотека» й без бокового меню;
+    /// «Що вже було» й «Улюблене» — стіною обкладинок, плейлисти — плитками. Яка вкладка відкрита, стилям каже
+    /// data-tab на #viewLib.
+    /// </summary>
+    [Fact]
+    public void Library_opens_with_its_tabs_in_the_sky()
+    {
+        var html = Web("index.html");
+        int from = html.IndexOf("id=\"viewLib\"", StringComparison.Ordinal), to = html.IndexOf("id=\"viewGames\"", StringComparison.Ordinal);
+        Assert.True(from >= 0 && to > from);
+        var lib = html.Substring(from, to - from);
+        Assert.Matches(@"(?s)^id=""viewLib"">\s*(<!--.*?-->\s*)?<nav class=""lib-nav hm-skybox"" id=""libTabs""", lib);
+        Assert.DoesNotContain("sec-top", lib);
+        Assert.DoesNotContain("<h1>", lib);
+        // три великі вкладки — музика; усе інше (бан і керування) — малими кнопками
+        var big = Regex.Match(lib, @"(?s)<div class=""lib-big"">(.*?)</div>").Groups[1].Value;
+        Assert.Equal(new[] { "history", "likes", "playlists" }, Regex.Matches(big, @"data-tab=""(\w+)""").Select(m => m.Groups[1].Value).ToArray());
+        var small = Regex.Match(lib, @"(?s)<div class=""lib-small"">(.*?)</div>").Groups[1].Value;
+        Assert.Contains("data-tab=\"bans\"", small);
+        Assert.Contains("id=\"libLead\"", lib);
+
+        var js = Web("app.js");
+        Assert.Contains("$('viewLib').dataset.tab = libTab;", js);
+        Assert.Contains("$('libLead').textContent = LIB_LEAD[libTab] || '';", js);
+        Assert.Contains("<ul class=\"list hist wall\"", js);      // «Що вже було»
+        Assert.Contains("<ul class=\"list wall\">", js);           // «Улюблене»
+        Assert.Contains("<div class=\"pl-grid\">", js);            // плейлисти
+
+        var css = Web("static/polyva.css");
+        Assert.Contains(".libpage .list.wall { display: grid;", css);
+        Assert.Contains(".pl-grid { display: grid;", css);
+        // бокового меню більше нема ніде
+        Assert.DoesNotContain("libmenu", html + js + css + Web("static/style.css"));
+        // проби вигляду (?lib, ?hist, ?pl) були тимчасові
+        Assert.False(File.Exists(Paths.Resolve("web/static/lib-proby.css")), "проби вигляду «Бібліотеки» мали зникнути");
+        Assert.DoesNotContain("lib-proby", js);
     }
 
     [Fact]

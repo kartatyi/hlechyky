@@ -2785,6 +2785,13 @@
   const LIB_TABS = ['history', 'likes', 'playlists', 'bans', 'ads', 'feedback', 'photos', 'mod', 'screen'];
   const ROUTE_TITLE = { home: 'Глечики', efir: 'Ефір', lib: 'Бібліотека', games: 'Ігри', stats: 'Хто скільки', who: 'Профіль', lavka: 'Лавка', chat: 'Балачки', history: 'Історія', tryvoga: 'Тривога', gonchar: 'Літопис кола' };
   const LIB_TITLE = { history: 'Що вже було', likes: 'Улюблене', playlists: 'Плейлисти', bans: 'Бан-лист', ads: 'Реклама', feedback: 'Пропозиції й баги', photos: 'Фото й тла людей', mod: 'Модерація Балачок', screen: 'Екран' };
+  // Рядок під вкладками в небі — про відкриту вкладку (index.html, #libLead).
+  const LIB_LEAD = {
+    history: 'Усе, що вже грало. Сподобалось — закинь знову або збережи в плейлист.',
+    likes: 'Пісні, яким тиснули ❤: твої й усіх.',
+    playlists: 'Добірки на вечір: закинь цілу в чергу або перенеси свою зі Spotify чи YouTube.',
+    bans: 'Що більше не заграє.',
+  };
   // Вкладки зі списком рядків уміють шукати по собі; у плейлистах шукати нічого.
   const LIB_FIND = { history: 'знайти в історії', likes: 'знайти в улюбленому', bans: 'знайти в бан-листі', ads: 'знайти рекламу', feedback: 'знайти в записках', photos: 'знайти за ніком' };
   // Старі адреси (закладки, посилання в балачках) ведуть туди, куди переїхали їхні сторінки.
@@ -2880,6 +2887,8 @@
       const next = LIB_TABS.includes(want) ? want : 'history';
       if (next !== libTab) { libTab = next; $('libFind').value = ''; }
       $('libTitle').textContent = LIB_TITLE[libTab];
+      $('libLead').textContent = LIB_LEAD[libTab] || '';
+      $('viewLib').dataset.tab = libTab;   // вигляд списку залежить від вкладки (static/polyva.css)
       $('libFind').hidden = !LIB_FIND[libTab];
       $('libFind').placeholder = LIB_FIND[libTab] || '';
     }
@@ -4057,41 +4066,6 @@
 
   // ---------- library: history / likes / playlists / stats ----------
   $('libTabs').querySelectorAll('button').forEach((b) => b.onclick = () => go('#lib/' + b.dataset.tab));
-  // ТИМЧАСОВО — проби вигляду «Бібліотеки» (прибрати разом зі static/lib-proby.css, щойно вигляд вибрано):
-  //   ?lib=a|b — вкладки стоять у небі замість назви розділу / назва в небі, вкладки під нею на березі;
-  //   ?hist=1|2 — «Що вже було» й «Улюблене» рівним списком / стіною обкладинок; ?pl=1|2 — плейлисти плитками / рядками.
-  (() => {
-    const p = new URLSearchParams(location.search), root = document.documentElement;
-    const pick = (k, re) => (re.test(p.get(k) || '') ? p.get(k) : '');
-    const lib = pick('lib', /^[ab]$/), hist = pick('hist', /^[12]$/), pl = pick('pl', /^[12]$/);
-    if (!lib && !hist && !pl) return;
-    if (lib) root.dataset.lib = lib;
-    if (hist) root.dataset.hist = hist;
-    if (pl) root.dataset.pl = pl;
-    const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = '/static/lib-proby.css'; document.head.appendChild(css);
-    const nav = $('libTabs'), BIG = ['history', 'likes', 'playlists'];
-    const LEAD = {
-      history: 'Усе, що вже грало. Сподобалось — закинь знову або збережи в плейлист.',
-      likes: 'Пісні, яким тиснули ❤: твої й усіх.',
-      playlists: 'Добірки на вечір: закинь цілу в чергу або перенеси свою зі Spotify чи YouTube.',
-      bans: 'Що більше не заграє.',
-    };
-    const lead = document.createElement('p'); lead.className = 'lb-lead';
-    if (lib) {
-      const big = document.createElement('div'); big.className = 'lb-big';
-      const small = document.createElement('div'); small.className = 'lb-small';
-      nav.querySelectorAll('button').forEach((b) => (BIG.includes(b.dataset.tab) ? big : small).appendChild(b));
-      nav.append(big, lead, small);
-    }
-    const paint = () => {
-      const on = nav.querySelector('button.on'), tab = on ? on.dataset.tab : '';
-      root.dataset.libtab = tab;
-      root.dataset.libbig = BIG.includes(tab) ? '1' : '';
-      lead.textContent = LEAD[tab] || '';
-    };
-    new MutationObserver(paint).observe(nav, { subtree: true, attributes: true, attributeFilter: ['class'] });
-    paint();
-  })();
   /// Шукаємо по тому, що вже на екрані: сервер тут ні до чого, і відповідь миттєва.
   function filterLib() {
     const box = $('lib');
@@ -4168,7 +4142,7 @@
       const empty = histWho === 'mine'
         ? 'Від тебе тут ще жодної пісні. Закинь щось в «Ефірі» — і тут почне збиратись твоє.'
         : 'Ще нічого не грало. Закинь першу пісню — і тут почне збиратись історія.';
-      box.innerHTML = seg + `<ul class="list hist" data-last="${list.length ? list[list.length - 1].id : ''}">${histRows(list) || `<li class="empty glek">${empty}</li>`}</ul>` + moreBtn(list.length);
+      box.innerHTML = seg + `<ul class="list hist wall" data-last="${list.length ? list[list.length - 1].id : ''}">${histRows(list) || `<li class="empty glek">${empty}</li>`}</ul>` + moreBtn(list.length);
       box.querySelectorAll('.seg button').forEach((b) => b.onclick = () => {
         histWho = b.dataset.v;
         try { localStorage.setItem('histWho', histWho); } catch { /* приватне вікно */ }
@@ -4370,7 +4344,7 @@
       : 'Ще жодної вподобайки. Тисни ❤ під треком в ефірі — і пісня осяде тут.';
     box.innerHTML = `<div class="tabs seg">${[['mine', `Мої · ${mine.length}`], ['all', `Усі · ${list.length}`]].map(([v, label]) =>
       `<button data-v="${v}" class="${likesWho === v ? 'on' : ''}">${label}</button>`).join('')}</div>` +
-      `<ul class="list">${rows.join('') || `<li class="empty glek">${empty}</li>`}</ul>`;
+      `<ul class="list wall">${rows.join('') || `<li class="empty glek">${empty}</li>`}</ul>`;
     box.querySelectorAll('.seg button').forEach((b) => b.onclick = () => {
       likesWho = b.dataset.v;
       try { localStorage.setItem('likesWho', likesWho); } catch { /* приватне вікно */ }
@@ -4401,7 +4375,7 @@
         <div class="btns">${b.track.sourceUrl && !isVoice(b.track) ? `<a class="chip" href="${esc(b.track.sourceUrl)}" target="_blank" rel="noopener" title="Що це було">↗</a>` : ''}${unbanBtn(b.track)}</div>
       </li>`;
     box.innerHTML = `<div class="muted small" style="margin-bottom:8px">${how}</div>` +
-      `<ul class="list">${r.items.map(row).join('') || '<li class="empty glek">Бан-лист порожній: усе, що грало, всіх влаштувало.</li>'}</ul>`;
+      `<ul class="list flat">${r.items.map(row).join('') || '<li class="empty glek">Бан-лист порожній: усе, що грало, всіх влаштувало.</li>'}</ul>`;
     box.querySelectorAll('button.unban').forEach((b) => b.onclick = (e) => {
       const ask = admin ? `Розбанити «${b.dataset.title}»?` : `Викупити «${b.dataset.title}» з бану за ${r.unbanPrice} 🏺?`;
       if (!confirm(ask)) return;
@@ -4614,11 +4588,11 @@
     const box = $('lib');
     const list = await api('GET', '/api/playlists');
     box.innerHTML = impBlock() + `<form class="pl-new" id="plCreate"><input type="text" maxlength="40" placeholder="Або порожній: назва нового плейлиста…" autocomplete="off"><button type="submit">Створити</button></form>` +
-      (list.map((p) => `<div class="pl" data-id="${p.id}">
+      (list.length ? '<div class="pl-grid">' : '') + (list.map((p) => `<div class="pl" data-id="${p.id}">
           ${p.thumbUrl ? `<img src="${esc(p.thumbUrl)}" alt="">` : '<div class="noimg">🎵</div>'}
           <div style="min-width:0"><div class="name" title="Показати треки">${esc(p.name)}</div><div class="r muted small">${p.count} трек${p.count % 10 === 1 && p.count % 100 !== 11 ? '' : (p.count % 10 >= 2 && p.count % 10 <= 4 && (p.count % 100 < 10 || p.count % 100 >= 20)) ? 'и' : 'ів'} · ${esc(p.createdBy)}</div></div>
-          <div class="btns"><button class="primary go" title="Закинути весь плейлист у чергу впереміш">▶ у чергу</button>${(me.role === 'admin' || sameNick(p.createdBy, me.nick)) ? `<button class="ghost danger del" title="Видалити плейлист">✕</button>` : ''}</div>
-        </div><div class="pl-tracks" data-for="${p.id}" hidden></div>`).join('') || '<div class="empty glek">Плейлистів ще нема. Перенеси готовий посиланням вище або створи порожній — треки додаються кнопкою «📂＋» під тим, що грає, в історії та в улюбленому.</div>');
+          <div class="btns"><button class="primary go" title="Закинути весь плейлист у чергу впереміш" aria-label="Закинути весь плейлист у чергу">▶</button>${(me.role === 'admin' || sameNick(p.createdBy, me.nick)) ? `<button class="ghost danger del" title="Видалити плейлист" aria-label="Видалити плейлист">✕</button>` : ''}</div>
+        </div><div class="pl-tracks" data-for="${p.id}" hidden></div>`).join('') + (list.length ? '</div>' : '') || '<div class="empty glek">Плейлистів ще нема. Перенеси готовий посиланням вище або створи порожній — треки додаються кнопкою «📂＋» під тим, що грає, в історії та в улюбленому.</div>');
     box.querySelector('#plImpForm').onsubmit = (e) => {
       e.preventDefault();
       if (!me.nick) { askNick(true); return; }
@@ -4632,29 +4606,36 @@
     };
     box.querySelectorAll('.pl').forEach((el) => {
       const id = el.dataset.id;
-      el.querySelector('.go').onclick = (e) => busy(e.currentTarget, 'закидаю…', () => api('POST', `/api/playlists/${id}/queue`, { shuffle: true }).then(ok).catch(fail));
+      el.querySelector('.go').onclick = (e) => busy(e.currentTarget, '', () => api('POST', `/api/playlists/${id}/queue`, { shuffle: true }).then(ok).catch(fail));
       el.querySelector('.del')?.addEventListener('click', async () => {
         if (!confirm('Видалити плейлист?')) return;
         try { ok(await api('DELETE', `/api/playlists/${id}`)); renderPlaylists(); } catch (err) { fail(err); }
       });
-      el.querySelector('.name').onclick = () => { if (openPl.has(id)) openPl.delete(id); else openPl.add(id); showPlTracks(id); };
+      const toggle = () => { if (openPl.has(id)) openPl.delete(id); else openPl.add(id); showPlTracks(id); };
+      el.querySelector('.name').onclick = toggle;
+      el.querySelector(':scope > img, :scope > .noimg').onclick = toggle;   // плитка: по обкладинці тиснуть першою
       if (openPl.has(id)) showPlTracks(id);
     });
   }
   async function showPlTracks(id) {
     const box = document.querySelector(`.pl-tracks[data-for="${id}"]`);
     if (!box) return;
+    // Треки стоять під рядом плиток, а не під своєю: відкрита плитка позначена, а над треками — назва плейлиста.
+    const tile = document.querySelector(`.pl[data-id="${id}"]`);
+    if (tile) tile.classList.toggle('open', openPl.has(id));
     if (!openPl.has(id)) { box.hidden = true; return; }
     box.hidden = false;
+    const head = `<div class="plt-h"><b>${esc(tile ? tile.querySelector('.name').textContent : '')}</b><button class="ghost plt-x" type="button">згорнути</button></div>`;
     box.innerHTML = '<div class="muted small"><span class="spin"></span> мить…</div>';
     try {
       const r = await api('GET', `/api/playlists/${id}`);
-      box.innerHTML = `<ul class="list">${r.tracks.map((x) => `<li>
+      box.innerHTML = head + `<ul class="list flat">${r.tracks.map((x) => `<li>
           ${cover(x.track)}
           <div style="min-width:0"><div class="t">${esc(x.track.title)} <span class="muted">· ${esc(x.track.artist)}</span></div><div class="r">${fmt(x.track.durationSec)} · від ${esc(fromNick(x.addedBy))}</div></div>
           <div class="btns"><button class="q" data-id="${esc(x.track.id)}">в чергу</button><button class="ghost danger rmt" data-id="${esc(x.track.id)}" title="Прибрати з плейлиста">✕</button></div>
         </li>`).join('') || '<li class="empty">порожньо</li>'}</ul>`;
       wireRows(box);
+      box.querySelector('.plt-x').onclick = () => { openPl.delete(id); showPlTracks(id); };
       box.querySelectorAll('.rmt').forEach((b) => b.onclick = async () => {
         try { ok(await api('DELETE', `/api/playlists/${id}/tracks/${b.dataset.id}`)); renderPlaylists(); } catch (err) { fail(err); }
       });
