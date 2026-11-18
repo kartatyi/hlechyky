@@ -4057,6 +4057,41 @@
 
   // ---------- library: history / likes / playlists / stats ----------
   $('libTabs').querySelectorAll('button').forEach((b) => b.onclick = () => go('#lib/' + b.dataset.tab));
+  // ТИМЧАСОВО — проби вигляду «Бібліотеки» (прибрати разом зі static/lib-proby.css, щойно вигляд вибрано):
+  //   ?lib=a|b — вкладки стоять у небі замість назви розділу / назва в небі, вкладки під нею на березі;
+  //   ?hist=1|2 — «Що вже було» й «Улюблене» рівним списком / стіною обкладинок; ?pl=1|2 — плейлисти плитками / рядками.
+  (() => {
+    const p = new URLSearchParams(location.search), root = document.documentElement;
+    const pick = (k, re) => (re.test(p.get(k) || '') ? p.get(k) : '');
+    const lib = pick('lib', /^[ab]$/), hist = pick('hist', /^[12]$/), pl = pick('pl', /^[12]$/);
+    if (!lib && !hist && !pl) return;
+    if (lib) root.dataset.lib = lib;
+    if (hist) root.dataset.hist = hist;
+    if (pl) root.dataset.pl = pl;
+    const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = '/static/lib-proby.css'; document.head.appendChild(css);
+    const nav = $('libTabs'), BIG = ['history', 'likes', 'playlists'];
+    const LEAD = {
+      history: 'Усе, що вже грало. Сподобалось — закинь знову або збережи в плейлист.',
+      likes: 'Пісні, яким тиснули ❤: твої й усіх.',
+      playlists: 'Добірки на вечір: закинь цілу в чергу або перенеси свою зі Spotify чи YouTube.',
+      bans: 'Що більше не заграє.',
+    };
+    const lead = document.createElement('p'); lead.className = 'lb-lead';
+    if (lib) {
+      const big = document.createElement('div'); big.className = 'lb-big';
+      const small = document.createElement('div'); small.className = 'lb-small';
+      nav.querySelectorAll('button').forEach((b) => (BIG.includes(b.dataset.tab) ? big : small).appendChild(b));
+      nav.append(big, lead, small);
+    }
+    const paint = () => {
+      const on = nav.querySelector('button.on'), tab = on ? on.dataset.tab : '';
+      root.dataset.libtab = tab;
+      root.dataset.libbig = BIG.includes(tab) ? '1' : '';
+      lead.textContent = LEAD[tab] || '';
+    };
+    new MutationObserver(paint).observe(nav, { subtree: true, attributes: true, attributeFilter: ['class'] });
+    paint();
+  })();
   /// Шукаємо по тому, що вже на екрані: сервер тут ні до чого, і відповідь миттєва.
   function filterLib() {
     const box = $('lib');
@@ -4082,7 +4117,7 @@
 
   const trackRow = (t, right, extra) => `<li>
       ${cover(t)}
-      <div style="min-width:0"><div class="t ${extra?.skipped ? 'skipped' : ''}">${esc(t.title)} <span class="muted">· ${esc(t.artist)}</span></div><div class="r">${right}</div></div>
+      <div style="min-width:0"><div class="t ${extra?.skipped ? 'skipped' : ''}">${esc(t.title)} <span class="muted"><span class="sep">· </span>${esc(t.artist)}</span></div><div class="r">${right}</div></div>
       <div class="btns">${voiceBtn(t)}<button class="q" data-id="${esc(t.id)}" title="Закинути в чергу">в чергу</button><button class="ghost pl" data-id="${esc(t.id)}" data-title="${esc(t.title)}" title="Зберегти в плейлист">📂＋</button></div>
     </li>`;
   function wireRows(root) {
