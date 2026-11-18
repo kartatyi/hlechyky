@@ -401,9 +401,11 @@
     });
     drawStatsBody();
   }
+  /// Значок вкладки («✨ Огляд») — в окремому елементі: вигляд може його сховати.
+  const tabLabel = (l) => l.replace(/^(\S+)\s+/, '<span class="st-ico">$1 </span>');
   function tabsHtml(fresh) {
     return allTabs().map(({ key: k, label: l }) =>
-      '<button type="button" data-t="' + k + '"' + (k === statsTab ? ' class="on"' : '') + '>' + l
+      '<button type="button" data-t="' + k + '"' + (k === statsTab ? ' class="on"' : '') + '>' + tabLabel(l)
       + (tabBadges.get(k) || (k === 'overview' && fresh ? ' <span class="stnew">нове</span>' : '')) + '</button>').join('');
   }
   function wireTabs(root) {

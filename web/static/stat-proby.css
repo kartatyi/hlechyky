@@ -1,0 +1,31 @@
+/* ТИМЧАСОВО — проби вигляду вкладок «Хто скільки» (адреса ?stat=a|b). Вмикає їх блок у web/app.js; після вибору лишити
+   вибране в polyva.css, а цей файл і той блок прибрати.
+   a — «Вкладки в небі»: слів «Хто скільки» нема, заголовок сторінки — самі вкладки; перемикач періоду — внизу неба;
+   b — «Назва й вкладки»: назва лишається в небі, вкладки на березі — темним склом, відкрита жовта. */
+
+/* ===== a ===== */
+:root[data-stat="a"] #viewStats > .sec-top { display: none; }
+:root[data-stat="a"] #stats > .sthead { flex-direction: column; flex-wrap: nowrap; align-items: flex-start; justify-content: flex-start; gap: 0; min-height: calc(var(--sky-h) - var(--sky-fg) - 18px); padding: 14px 8px 0; }
+:root[data-stat="a"] .sttabs { align-items: baseline; gap: 6px 26px; }
+:root[data-stat="a"] .sttabs button {
+  padding: 0 0 7px; border: 0; border-radius: 0; background: none; color: rgba(255, 255, 255, .6); text-shadow: 0 2px 18px rgba(0, 0, 0, .45);
+  font-family: var(--display); font-size: clamp(1.5em, 2.3vw, 2.2em); font-weight: 800; letter-spacing: -.025em; line-height: 1.05;
+}
+:root[data-stat="a"] .sttabs button .st-ico { display: none; }
+:root[data-stat="a"] .sttabs button:hover { background: none; color: rgba(255, 255, 255, .88); }
+:root[data-stat="a"] .sttabs button.on { background: linear-gradient(var(--accent), var(--accent)) left bottom / 100% 3px no-repeat; color: #fff; }
+:root[data-stat="a"] .sttabs .stnew { font-size: .42em; letter-spacing: 0; vertical-align: middle; text-shadow: none; }
+:root[data-stat="a"] .stper { margin-top: auto; border-color: rgba(255, 255, 255, .16); background: rgba(10, 24, 18, .8); }
+:root[data-stat="a"] .stper button:not(.on) { color: rgba(255, 255, 255, .86); }
+@media (max-width: 900px) {
+  :root[data-stat="a"] #stats > .sthead { min-height: calc(var(--sky-h) - var(--sky-fg) - 12px); padding: 8px 4px 0; }
+  :root[data-stat="a"] .sttabs { gap: 4px 14px; }
+  :root[data-stat="a"] .sttabs button { padding-bottom: 5px; font-size: 1.25em; background-size: 100% 2px; }
+  :root[data-stat="a"] .stper { margin-top: 12px; }
+}
+
+/* ===== b ===== */
+:root[data-stat="b"] .sttabs { gap: 6px; }
+:root[data-stat="b"] .sttabs button { min-height: 38px; padding: 0 14px; border: 1px solid rgba(255, 255, 255, .16); border-radius: 999px; background: rgba(10, 24, 18, .8); color: rgba(255, 255, 255, .88); }
+:root[data-stat="b"] .sttabs button:hover { border-color: rgba(255, 255, 255, .34); color: #fff; }
+:root[data-stat="b"] .sttabs button.on { border-color: transparent; background: var(--accent); color: var(--accent-ink); font-weight: 700; }
