@@ -75,6 +75,7 @@ public static class GamesSetup
         Impl.TyrSetup.AddTyr(services);   // «Тир дня»: таблиця дня за очками й очки в «☀ Сьогодні»
         Impl.NamystoSetup.AddNamysto(services);   // «Намисто»: траси кампанії й рекорди, таблиця «Намиста дня» і її очки в «☀ Сьогодні»
         Impl.SkleiSetup.AddSklei(services);                 // «Склей глек»: свої картинки за черепки, малюнки й фото в колоді
+        Impl.KhataSetup.AddKhata(services);                 // «Здам хату»: банк квартир від гравців (фото в data/khata)
         Impl.RouletteSetup.AddRoulette(services);   // Рулетка: каса (виплати, відновлення)
         Impl.SlotsSetup.AddSlots(services);         // Слоти: каса-Скарбничка, заноси, Slots:* (specs/slots.md)
         Impl.LelkaSetup.AddLelka(services);         // Лелека: налаштування Lelka:* і каса
@@ -119,6 +120,7 @@ public static class GamesSetup
         Impl.DinoDailySetup.MapDinoDaily(app);              // /api/games/dino-daily/cup — кубок тижня
         Impl.NamystoSetup.MapNamysto(app);                  // /api/games/namysto/tracks — жолоби всіх трас
         Impl.SkleiSetup.MapSklei(app);                      // /api/games/sklei/… — колода, своя картинка, адмін знімає
+        Impl.KhataSetup.MapKhata(app);                      // /api/games/khata/… — банк квартир, додати, схвалити, фото
         Impl.SlotsSetup.MapSlots(app);                      // /api/slots/feed — Скарбничка й заноси тижня
         Impl.FuraSetup.MapFura(app);                        // /api/games/fura/map/<id> — мапа, /voice — голос диспетчера «Чумаків»
         Impl.KoliyaSetup.MapKoliya(app);                    // /api/games/koliya/<стіл>/log — журнал команд «Колії»
