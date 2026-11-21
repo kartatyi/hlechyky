@@ -200,11 +200,13 @@
     const ctl = canCtl(m), board = $('#bdBoard');
     board.classList.toggle('ro', !ctl);
     $('#bdWatch').hidden = ctl;
+    // На телефоні поруч із темами влазить хіба слово — раунд і корт пишемо в рядку правил нижче
     $('#bdTitle').innerHTML = m.tour
-      ? '<a href="#tour/' + esc(m.tour.id) + '">🏆 Турнір · раунд ' + m.tour.round + ' · корт ' + m.tour.court + '</a>'
+      ? '<a href="#tour/' + esc(m.tour.id) + '" title="До турніру" aria-label="До турніру">🏆</a>'
       : '<span class="muted">веде</span> ' + esc(m.by || '');
     let tab;
-    if (pts) tab = '<div class="b-info">' + (r.total ? 'Гра до ' + r.total : 'Гра на час') + ' · подача — кожні 4 очки</div>';
+    if (pts) tab = '<div class="b-info">' + (m.tour ? '🏆 Раунд ' + m.tour.round + ' · корт ' + m.tour.court + ' · ' + (r.total ? 'гра до ' + r.total : 'гра на час')
+      : (r.total ? 'Гра до ' + r.total : 'Гра на час') + ' · подача — кожні 4 очки') + '</div>';
     else {
       const open = !s.over;
       const head = s.sets.map((x, i) => '<th>' + (x.stb ? 'СТБ' : 'С' + (i + 1)) + '</th>').join('') + (open ? '<th>' + (s.superTb ? 'СТБ' : 'С' + (s.sets.length + 1)) + '</th>' : '');
@@ -248,12 +250,65 @@
     // ⏳ і ✕ на телефоні — лише значком (.tx ховається): чотири кнопки в один рядок
     if (ctl && m.status === 'live') bar = btn('undo', '↶ Скасувати') + btn('finish', '🏁 Завершити') + btn('until', '⏳<span class="tx"> Оренда</span>', 'ico', 'Оренда корту')
       + btn('abandon', '✕<span class="tx"> Скасувати матч</span>', 'bad ico', 'Скасувати матч');
-    else if (ctl && m.status === 'done') bar = btn('undo', '↶ Повернути матч') + (m.tour ? '' : btn('again', '↺ Ще раз'));
+    else if (ctl && m.status === 'done' && m.tour) {
+      // Матч турніру скінчився: не тупик — назад до таблиці або одразу наступний раунд цього корту на табло
+      const nx = nextFor(m);
+      bar = btn('undo', '↶<span class="tx"> Повернути матч</span>', 'ico', 'Повернути матч') + btn('tour', '🏆 Таблиця')
+        + (nx ? btn('next', '▶ ' + esc(nx.label) + ' на табло', 'pri') : '');
+    } else if (ctl && m.status === 'done') bar = btn('undo', '↶ Повернути матч') + btn('again', '↺ Ще раз');
     $('#bBar').innerHTML = bar + '<button type="button" class="btn sm b-fs-only" data-act="fs">⛶ Вийти</button>';
     paintMom();
     clock();
     fit();
     after();
+    holdWake();
+  }
+
+  /// Екран не гасне, поки ведеш живий матч: між розіграшами телефон лежить у руці, і будити його перед кожним очком
+  /// не годиться. Повний екран і брелоки тримають його й так.
+  function holdWake() {
+    if (mode === 'board' && visible() && !document.hidden && cur && cur.status === 'live' && canCtl(cur)) P.wake(true);
+    else if (!inFs()) unwake();
+  }
+
+  // ------------------------------------------------------------------ турнір: наступний раунд цього корту
+
+  let tourOf = null;          // { id, t } — останній вид турніру, з якого цей матч
+  /// Наступний раунд на тому самому корті, якщо він уже складений і ще без рахунку: { round, court, label }
+  function nextFor(m) {
+    const tr = m.tour;
+    if (!tourOf || tourOf.id !== tr.id) { loadTour(tr.id); return null; }
+    const t = tourOf.t;
+    if (!t || t.status !== 'live') return null;
+    for (let i = tr.round; i < t.rounds.length; i++) {
+      const r = t.rounds[i];
+      if (!r.ready) return null;   // мексикано, король, плей-оф — чекають, поки дограють інші корти
+      const x = r.matches.find((y) => y.court === tr.court);
+      if (x && (x.sa == null || x.sb == null)) {
+        const st = { semi: '½ фіналу', final: 'Фінал', third: 'За 3-тє' }[x.stage || r.stage];
+        return { round: i + 1, court: tr.court, label: st || 'Раунд ' + (i + 1) };
+      }
+    }
+    return null;
+  }
+  async function loadTour(id) {
+    tourOf = { id, t: null };   // поки вантажиться (чи не вдалось) — лише «🏆 Таблиця», без повторних запитів
+    let t; try { t = await P.api('tournaments/' + encodeURIComponent(id)); } catch { return; }
+    if (!tourOf || tourOf.id !== id) return;
+    if (!tourOf.t) tourOf.t = t;   // подія хаба могла прийти свіжішою
+    if (mode === 'board' && cur && cur.tour && cur.tour.id === id && cur.status === 'done') paint(false);
+  }
+  P.on('tournament', (t) => {
+    if (!t || !t.id || !t.rounds || !cur || !cur.tour || cur.tour.id !== t.id) return;
+    tourOf = { id: t.id, t };
+    if (mode === 'board' && cur.status === 'done') paint(false);
+  });
+  async function nextOnBoard() {
+    const nx = cur && cur.tour && nextFor(cur); if (!nx) return;
+    const b = $('#bBar [data-act="next"]'); if (b) b.disabled = true;
+    let r; try { r = await P.api('tournaments/' + encodeURIComponent(cur.tour.id) + '/live', { round: nx.round, court: nx.court }); }
+    catch { if (b) b.disabled = false; return; }
+    P.go('board', r.match.id);
   }
 
   /// Телефон стоячи: табло — рівно в екран між шапкою й нижніми вкладками (CSS бере --bd-top — де табло починається)
@@ -476,7 +531,7 @@
 
   async function openMatch(id) {
     mode = 'board';
-    if (curId !== id) { curId = id; cur = null; seq = 0; clipSeq = 0; statsFor = ''; }
+    if (curId !== id) { curId = id; cur = null; seq = 0; clipSeq = 0; statsFor = ''; tourOf = null; }
     shell();
     let m;
     try { m = await P.api('matches/' + encodeURIComponent(id)); }
@@ -510,6 +565,8 @@
       else if (k === 'undo') act('undo');
       else if (k === 'until') untilSheet();
       else if (k === 'again') again();
+      else if (k === 'tour') { if (cur && cur.tour) P.go('tour', cur.tour.id); }
+      else if (k === 'next') nextOnBoard();
       else if (k === 'finish') confirmSheet('🏁 Завершити матч?', 'Рахунок ляже як є: перемагає той, у кого більше сетів, далі — геймів (у грі на очки — більше очок). Нічия теж буває. Передумаєте — «↶ Повернути матч».', '🏁 Завершити', () => act('finish'));
       else if (k === 'abandon') confirmSheet('✕ Скасувати матч?', 'Без результату: у рейтинг і статистику він не піде. Це — для матчу, заведеного помилково.', 'Скасувати матч', () => act('abandon'));
       return;
@@ -655,7 +712,11 @@
     T.beep(t, m ? 'ok' : 'err');
   };
 
-  document.addEventListener('visibilitychange', () => { if (!document.hidden && mode === 'board' && visible() && T.live()) P.wake(true); });
+  // Браузер відпускає блокування екрана, коли сторінку сховали, — повертаємо, щойно знову видно
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden || mode !== 'board' || !visible()) return;
+    if (T.live()) P.wake(true); else holdWake();
+  });
 
   P.on('match', (m) => {
     if (!m || !m.id) return;

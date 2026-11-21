@@ -237,7 +237,7 @@
       + (live && org && t.format !== 'groups' ? act('addround', '+ раунд') : '')
       + (live && org ? act('finish', '🏁 Завершити', 'pri') : '')
       + ((P.me.admin || (org && !anyScore)) ? act('delete', '🗑', 'ghost bad') : '') + '</div></div>'
-      + '<div class="t-grid"><div><div class="rtabs" id="trTabs"></div><div id="trBody"></div><div id="trPo"></div></div><div class="card lbwrap" id="trLb"></div></div>'
+      + '<div class="t-grid"><div>' + meHtml(t, nm) + '<div class="rtabs" id="trTabs"></div><div id="trBody"></div><div id="trPo"></div></div><div class="card lbwrap" id="trLb"></div></div>'
       + '<div id="trFinal"></div>';
     $('#trTabs').innerHTML = t.rounds.map((r, i) => {
       const s = roundMark(r), lbl = (r.stage && STAGE[r.stage]) || 'Р' + (i + 1);
@@ -247,6 +247,52 @@
     $('#trLb').innerHTML = lbHtml(t, nm);
     if (t.format === 'groups') $('#trPo').innerHTML = bracketHtml(t, nm);
     $('#trFinal').innerHTML = finalHtml(t, nm);
+  }
+
+  // ------------------------------------------------------------------ ти в турнірі
+
+  /// Де я в раунді r: { m, mates, opp } — граю; { sit: true } — відпочиваю; null — мене там нема
+  function myIn(r, pid) {
+    const m = r.matches.find((x) => x.a.includes(pid) || x.b.includes(pid));
+    if (m) { const mine = m.a.includes(pid) ? m.a : m.b; return { m, mates: mine.filter((p) => p !== pid), opp: mine === m.a ? m.b : m.a }; }
+    return (r.sit || []).includes(pid) ? { sit: true } : null;
+  }
+  const isMine = (m) => !!P.me.pid && (m.a.includes(P.me.pid) || m.b.includes(P.me.pid));
+  const roundName = (t, i) => (t.rounds[i].stage && STAGE[t.rounds[i].stage]) || 'раунд ' + (i + 1);
+  /// «корт 2 · ти + Саша — Smaug + Назар» (імена не відмінюємо — тож плюсами, а не «з Сашею проти…»)
+  function myLine(x, nm) {
+    return 'корт ' + x.m.court + ' · ' + esc(['ти'].concat(x.mates.map(nm)).join(' + ')) + ' — ' + esc(unitText(x.opp, nm));
+  }
+  /// Картка «🎾 Ти зараз … / Далі …» — щоб на корті не шукати себе по вкладках раундів
+  function meHtml(t, nm) {
+    const pid = P.me.pid;
+    if (t.status !== 'live' || !pid || !t.rounds.some((r) => myIn(r, pid))) return '';
+    const ci = t.rounds.findIndex((r) => r.ready && !r.matches.every(scored));
+    if (ci < 0) return '';
+    const now = myIn(t.rounds[ci], pid);
+    let head, line;
+    if (!now) { head = 'Зараз · ' + roundName(t, ci); line = 'У цьому раунді ти не граєш'; }
+    else if (now.sit) { head = '🪑 Зараз · ' + roundName(t, ci); line = 'Ти відпочиваєш'; }
+    else if (scored(now.m)) { head = 'Зараз · ' + roundName(t, ci); line = 'Твій матч дограно ' + now.m.sa + ':' + now.m.sb + ' — чекаємо інші корти'; }
+    else { head = '🎾 Ти зараз · ' + roundName(t, ci); line = myLine(now, nm); }
+    let next = '';
+    const ni = ci + 1;
+    if (ni < t.rounds.length) {
+      const nr = t.rounds[ni], x = nr.ready ? myIn(nr, pid) : null;
+      next = 'Далі, ' + roundName(t, ni) + ': ' + (!nr.ready ? 'пари складуться, щойно дограють цей раунд'
+        : !x ? 'не граєш' : x.sit ? 'відпочиваєш' : myLine(x, nm));
+    }
+    // Тиць по картці — відкрити поточний раунд (вкладка могла лишитись на дограному)
+    return '<div class="card tr-me' + (now && !now.sit && !scored(now.m) ? ' on' : '') + '" data-ri="' + ci + '"><div class="k">' + head + '</div><b>' + line + '</b>'
+      + (next ? '<div class="muted small">' + next + '</div>' : '') + '</div>';
+  }
+  /// «Далі · раунд 3» під кортами: пари наступного раунду, поки цей ще грають (американо й мікст складені наперед)
+  function nextHtml(t, i, nm) {
+    const r = t.rounds[i + 1];
+    if (t.status !== 'live' || !r || !r.ready || r.matches.some(scored) || t.rounds[i].matches.every(scored)) return '';
+    return '<div class="court tr-next"><div class="court-h"><b>Далі · ' + esc(roundName(t, i + 1)) + '</b><span>поки чекаєте</span></div>'
+      + r.matches.map((m) => '<div class="tn-row' + (isMine(m) ? ' me' : '') + '"><b>Корт ' + m.court + ':</b> ' + esc(unitText(m.a, nm)) + ' — ' + esc(unitText(m.b, nm)) + '</div>').join('')
+      + (r.sit && r.sit.length ? '<div class="tn-row muted">🪑 ' + esc(r.sit.map(nm).join(', ')) + '</div>' : '') + '</div>';
   }
 
   function renderRound(nm) {
@@ -266,7 +312,9 @@
       const sg = m.stage || r.stage, ok = scored(m), ed = canEdit(t, m), st = sg && STAGE[sg] ? STAGE[sg] : m.group ? 'Група ' + m.group : '';
       const board = m.live ? '<button type="button" class="btn xs" data-board="' + esc(m.live) + '">📺 на табло</button>'
         : ed && !ok ? '<button type="button" class="btn xs ghost" data-live="' + ci + '" title="Рахувати цей матч на табло — рахунок сам ляже сюди">▶ вести на табло</button>' : '';
-      return '<div class="court' + (ok ? ' done' : '') + '"><div class="court-h"><b>Корт ' + m.court + '</b>' + (st ? '<span>' + esc(st) + '</span>' : '') + board + '</div>'
+      const me = isMine(m) && t.status === 'live';
+      return '<div class="court' + (ok ? ' done' : '') + (me ? ' mine' : '') + '"><div class="court-h"><b>Корт ' + m.court + '</b>' + (me ? '<span class="me-tag">ти тут</span>' : '')
+        + (st ? '<span>' + esc(st) + '</span>' : '') + board + '</div>'
         + '<div class="cm">' + side(m.a, 'a', ok && m.sa > m.sb) + '<div class="sc">'
         + (ed ? inp(ci, 'a', m.sa) + '<span>:</span>' + inp(ci, 'b', m.sb) : '<span class="ro">' + (m.sa == null ? '–' : m.sa) + '</span><span>:</span><span class="ro">' + (m.sb == null ? '–' : m.sb) + '</span>')
         + '</div>' + side(m.b, 'b', ok && m.sb > m.sa) + '</div>'
@@ -274,6 +322,7 @@
     }).join('')
       + (r.sit && r.sit.length ? '<div class="sitrow">🪑 Відпочива' + (r.sit.length > 1 ? 'ють' : 'є') + ': ' + r.sit.map((pid) => '<span class="pp">' + P.av(nm(pid)) + esc(nm(pid)) + '</span>').join('')
         + ' <span class="muted">— без очок</span></div>' : '')
+      + nextHtml(t, i, nm)
       + (t.status === 'live' && r.matches.some((m) => canEdit(t, m))
         ? '<div class="muted hint">' + (tot ? 'Вписуєш одне число — друге ставиться саме: разом завжди ' + tot + '.' : 'Впиши обидва числа' + (r.stage && r.stage !== 'group' ? ' — у плей-оф нічиєї нема.' : ' — нічия теж буває.')) + '</div>'
         : t.status === 'live' ? '<div class="muted hint">Рахунок вносять гравці цього корту й організатор.</div>' : '')

@@ -3294,6 +3294,48 @@
     padelAt = Date.now();
     api('GET', '/api/padel/lobby').then((x) => HGames.padel(x)).catch(() => { /* сервер без Падельні — лишається тиха картка */ });
   }
+  /// «Падельня» в «🔥 Зараз»: живий турнір (із рядком «ти на корті 2») чи, коли турнірів нема, живе табло. «Мій рядок» —
+  /// з /api/padel/tournaments/{id}: поточний раунд — перший готовий, де є матч без рахунку; мій pid — 'u:' + нік.
+  let padelMine = null, padelMineAt = 0, padelMineKey = '';
+  const padelNowKey = (x) => ((x && x.tours) || []).slice(0, 2).map((t) => t.id + ':' + t.round).join(',') + '|'
+    + ((x && x.live) || []).slice(0, 2).map((m) => m.id + ':' + (m.score || '')).join(',');
+  function loadPadelMine(force) {
+    const t0 = me.padel === false || !me.nick || !padelLobby ? null : (padelLobby.tours || [])[0];
+    if (!t0) { padelMine = null; return; }
+    const key = t0.id + ':' + t0.round;
+    if (!force && key === padelMineKey && Date.now() - padelMineAt < 20000) return;
+    padelMineKey = key; padelMineAt = Date.now();
+    api('GET', '/api/padel/tournaments/' + encodeURIComponent(t0.id)).then((t) => {
+      const pid = 'u:' + String(me.nick || '').trim().toLowerCase();
+      const scored = (m) => m.sa != null && m.sb != null;
+      const r = ((t && t.rounds) || []).find((x) => x.ready === true && (x.matches || []).some((m) => !scored(m)));
+      let text = '';
+      if (r) {
+        const m = (r.matches || []).find((x) => (x.a || []).includes(pid) || (x.b || []).includes(pid));
+        if (m) text = ' · ти на корті ' + m.court;
+        else if ((r.sit || []).includes(pid)) text = ' · ти відпочиваєш';
+      }
+      const was = padelMine && padelMine.text;
+      padelMine = { id: t0.id, text };
+      if (was !== text && shown && view.kind === 'lobby') lobbyLive();
+    }).catch(() => { /* без «мого рядка» — картка лишається */ });
+  }
+  function padelNowCards() {
+    if (me.padel === false || !padelLobby) return [];
+    const ic = '<span class="gnc-ic gnc-emo" aria-hidden="true">🍳</span>';
+    const tours = (padelLobby.tours || []).slice(0, 2);
+    if (tours.length) {
+      return tours.map((t, i) => '<div class="gnc gnc-cont gnc-padel" data-pre="padel">' + ic
+        + '<span class="gnc-t"><span class="gnc-k">Падельня · турнір</span><b>' + esc(t.title) + '</b>'
+        + '<span class="muted small">раунд ' + esc(t.round) + ' з ' + esc(t.of)
+        + (i === 0 && padelMine && padelMine.id === t.id ? esc(padelMine.text) : '') + '</span></span>'
+        + '<button class="primary gmain" data-go="#padel/tour/' + esc(encodeURIComponent(t.id)) + '">Відкрити</button></div>');
+    }
+    return (padelLobby.live || []).slice(0, 2).map((m) => '<div class="gnc gnc-cont gnc-padel" data-pre="padel">' + ic
+      + '<span class="gnc-t"><span class="gnc-k">Падельня · табло</span><b>' + esc((m.teams || []).map((t) => t.join(' і ')).join(' — ')) + '</b>'
+      + '<span class="muted small">' + esc(m.score || '') + '</span></span>'
+      + '<button class="primary gmain" data-go="#padel/board/' + esc(encodeURIComponent(m.id)) + '">Дивитись</button></div>');
+  }
   function padelWhen(local) {
     const d = new Date(local);
     if (Number.isNaN(d.getTime())) return '';
@@ -3652,8 +3694,11 @@
         + peeks.slice(0, 2).map((p) => '<button class="ghost gsolo-peek" data-peek="' + esc(p.room) + '" title="' + esc('Підглянути, як ' + p.nick + ' грає') + '">👁 ' + esc(p.nick) + '</button>').join('')
         + '</span></div>');
     }
-    if (!cards.length) return '';
+    const pCards = padelNowCards();
+    if (!cards.length && !pCards.length) return '';
+    cards.unshift(...pCards);
     const bits = [];
+    if (pCards.length) bits.push('🍳 падел');
     if (rooms.length) bits.push(rooms.length + ' ' + (rooms.length === 1 ? 'стіл' : rooms.length < 5 ? 'столи' : 'столів'));
     if (soloNow.length) bits.push(soloNow.length + ' у соло');
     return '<h3><span class="gnow-ico">🔥 </span>Зараз' + (bits.length ? ' <span class="muted small"><span class="gnow-sep">· </span>' + bits.join(' · ') + '</span>' : '') + '</h3>'
@@ -3698,6 +3743,11 @@
     const pass = (e) => fitsPlayers(e, pl) && (!tag || e.tags.includes(tag)) && (!onlyNew || isFresh(e));
     const cmp = sorter();
     const pool = (found ? found.hits.map((h) => h.doc.e) : all).filter(pass);   // усе, що проходить пошук і фільтри
+    // «Падельня» — окрема сторінка, у каталозі її нема: на «падел», «табло», «американо»… — окремий рядок-результат.
+    const wq = want.toLowerCase().replace(/\s+/g, ' ');
+    const padelHit = me.padel !== false && wq.length >= 3 && !pl && !tag && !onlyNew
+      && wq.split(' ').every((w) => ['падел', 'падель', 'padel', 'пательн', 'табло', 'американо', 'мексикано', 'турнір'].some((k) => k.includes(w)))
+      && wq.split(' ').some((w) => ['падел', 'падель', 'padel', 'пательн', 'табло', 'американо', 'мексикано'].some((k) => k.includes(w)));
     const inSection = (e, gid) => gid === 'all' || (gid === 'mine' ? favOn(e) : e.group === gid);
     let list;
     if (found) {
@@ -3795,7 +3845,7 @@
     const note = found && found.how === 'layout' ? 'Схоже, не та розкладка — шукаю «' + found.fixed + '». '
       : found && found.how === 'fuzzy' && list.length ? 'Точного збігу нема — ось схоже. ' : '';
     const activeLine = bits.length
-      ? '<div class="gactive"><span class="muted small">' + esc(note) + (want ? 'Шукаю в усіх розділах · ' : '') + 'знайдено ' + list.length + ':</span>'
+      ? '<div class="gactive"><span class="muted small">' + esc(note) + (want ? 'Шукаю в усіх розділах · ' : '') + 'знайдено ' + (list.length + (padelHit ? 1 : 0)) + ':</span>'
         + bits.map(([k, l]) => '<button type="button" class="chip gact" data-unset="' + k + '" title="Прибрати">' + esc(l) + ' ✕</button>').join('')
         + (bits.length > 1 ? '<button type="button" class="ghost gact-all" data-unset="all">скинути все</button>' : '') + '</div>'
       : '';
@@ -3805,7 +3855,10 @@
         + '<span class="ga-b">' + actHtml(adv) + '<button type="button" class="ghost" data-advice title="Нехай вибере іншу">🎲 Ще</button>'
         + '<button type="button" class="ghost" data-advice-off title="Сховати">✕</button></span></div>'
       : '';
-    slotHtml(L.querySelector('.gl-extra'), themeRow + tagSug + activeLine + adviceCard);
+    const padelRes = padelHit
+      ? '<button type="button" class="gdc gdc-link" data-go="#padel"><span class="gemo">🍳</span><b>Падельня</b><span class="muted small">табло, турніри, збори →</span></button>'
+      : '';
+    slotHtml(L.querySelector('.gl-extra'), themeRow + tagSug + activeLine + padelRes + adviceCard);
 
     // ---- полиці (лише «Усі» без пошуку й фільтрів): мої, нещодавні, нове, популярне — рядами банер-плиток ----
     let shelves = '';
@@ -3865,7 +3918,7 @@
             : '<div class="gcatg cat-' + filter + '">' + (filter === 'azart' && !narrowed && !listView ? azSlot : '')
               + (theme ? (listView ? flat(ths.find((x) => x.t.id === theme).items) : tilesOf(ths.find((x) => x.t.id === theme).items, theme)) : byThemes(ths)) + '</div>';
     const cat = L.querySelector('.gl-cat');
-    const catChanged = slotHtml(cat, tiles || '<div class="gempty glek">Овва, нічого схожого не знайшлось. Спробуй інакше'
+    const catChanged = slotHtml(cat, tiles || padelHit ? tiles : '<div class="gempty glek">Овва, нічого схожого не знайшлось. Спробуй інакше'
       + (narrowed ? ' або <button type="button" class="ghost" data-unset="all">скинь фільтри</button>' : '') + '.</div>');
     if (catChanged) { const s = cat.querySelector('.gaz-slot'); if (s) s.innerHTML = azartHeadHtml(); }
 
@@ -5320,10 +5373,11 @@
     /// Подія головного хаба padelLive (і відповідь /api/padel/lobby): картка «🍳 Падельня» в «Сьогодні».
     /// Лобі перемальовуємо, лише коли картка справді змінилась — матч шле це щоочка.
     padel(x) {
-      const was = padelCard();
+      const was = padelCard() + padelNowKey(padelLobby);
       padelLobby = x || null;
       padelAt = Date.now();
-      if (shown && view.kind === 'lobby' && padelCard() !== was) renderView();
+      loadPadelMine(false);
+      if (shown && view.kind === 'lobby' && padelCard() + padelNowKey(padelLobby) !== was) renderView();
     },
 
     /// Гаманець шапки (живий, з події wallet і /api/me); null — ще не прийшов. Слоти беруть його за баланс автомата.

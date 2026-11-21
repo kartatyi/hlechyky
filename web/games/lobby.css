@@ -368,3 +368,8 @@ body.pad-on .gb .gstar { opacity: 1; }
 .gday-cards .gdc-link > b, .gday-cards .gdc-link > .muted { grid-column: 2; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gday-cards .gdc.tour > div > b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gday-cards .gdc.tour > button { padding: 6px 11px; }
+/* Падельня в «Зараз»: емодзі-значок замість artIcon, того ж розміру */
+.gnc-emo { width: 34px; height: 34px; flex: none; display: grid; place-items: center; font-size: 26px; line-height: 1; border-radius: 9px; background: rgba(10, 24, 18, .45); }
+/* Картка Падельні ширша й не ріже «ти на корті 2»: на телефоні — майже на всю ширину, рядки переносяться */
+.gl-strip > .gnc-padel, body.g-nowsky:not(.g-room) .gl-strip > .gnc-padel { flex-basis: 100%; }
+.gnc-padel .gnc-t > * { white-space: normal; }
