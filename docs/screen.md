@@ -77,8 +77,13 @@ wss://hlechyky.pp.ua/api/screen/ws?key=<ключ>
 
 - Одразу після з'єднання сервер шле **поточний стан**, далі — новий стан на кожну зміну. Кожне повідомлення —
   окремий текстовий фрейм з JSON вище.
-- Слати нічого не обов'язково. Сервер пінгує кожні 20 с (стандартний WebSocket ping — бібліотеки відповідають самі).
+- Слати нічого не обов'язково. Сервер пінгує кожні 20 с (стандартний WebSocket ping — бібліотеки відповідають самі,
+  поки програма читає сокет). **Не прийшов понг за 20 с — сервер рве з'єднання**: так застигла програма (сокет
+  відкритий, а сама не читає — висить на залізі, заблокований цикл) не лишається «на зв'язку», а сайт чесно каже
+  «Екрана не чути». Тож важке (вимір, повільний драйвер) — в окремому потоці, не в циклі читання.
   Температуру й вимір можна слати в цей самий сокет текстовим JSON (розділ 5) — відповіді на них не буде.
+- І навпаки: мережа може пропасти мовчки (роутер, сон ПК) — тоді «connected» у програмі бреше. Пінгуй і ти: Python
+  `websockets` робить це сам (ping кожні 20 с), у C# — `ws.Options.KeepAliveInterval` і `KeepAliveTimeout` (приклад нижче).
 - Неправильний ключ — сервер відповідає **401** ще до з'єднання. Ключ змінили, поки з'єднання відкрите, —
   сервер закриває його з кодом **1008** (policy violation).
 - Сайт перезапускається при деплої (~2–15 с) — з'єднання рветься. **Перепідключайся завжди**: пауза 1 с, 2 с, 4 с…
@@ -132,16 +137,18 @@ while (true)
     {
         using var ws = new ClientWebSocket();
         ws.Options.SetRequestHeader("X-Screen-Key", key);
+        ws.Options.KeepAliveInterval = TimeSpan.FromSeconds(20);   // свій пінг: мертва мережа — виняток, а не вічне «connected»
+        ws.Options.KeepAliveTimeout = TimeSpan.FromSeconds(20);    // (.NET 9+)
         await ws.ConnectAsync(url, CancellationToken.None);
         pause = TimeSpan.FromSeconds(1);
         var buf = new byte[4096];
         while (ws.State == WebSocketState.Open)
         {
             using var ms = new MemoryStream();
-            WebSocketReceiveResult r;
-            do { r = await ws.ReceiveAsync(buf, CancellationToken.None); ms.Write(buf, 0, r.Count); }
-            while (!r.EndOfMessage);
-            if (r.MessageType == WebSocketMessageType.Close) break;
+            WebSocketReceiveResult res;
+            do { res = await ws.ReceiveAsync(buf, CancellationToken.None); ms.Write(buf, 0, res.Count); }
+            while (!res.EndOfMessage);
+            if (res.MessageType == WebSocketMessageType.Close) break;
             var s = JsonDocument.Parse(ms.ToArray()).RootElement;
             int brightness = s.GetProperty("brightness").GetInt32();
             int r = s.GetProperty("r").GetInt32(), g = s.GetProperty("g").GetInt32(), b = s.GetProperty("b").GetInt32();   // 0–1023
@@ -364,8 +371,10 @@ curl -s -H "X-Screen-Key: <ключ>" -H "Content-Type: application/json" -d '{"
 
 ## 6. «Екран на зв'язку»
 
-Вгорі вкладки адмін бачить 🟢 «Екран на зв'язку» — поки відкритий WebSocket або чекає опитування, і ще ~70 с після
-останнього запиту; інакше ⚪ «Екрана не чути — востаннє …». Нічого окремо для цього програмі робити не треба.
+Вгорі вкладки адмін бачить 🟢 «Екран на зв'язку» — поки відкритий WebSocket (і програма відповідає на пінги) або
+чекає опитування, і ще ~70 с після останнього запиту опитування; інакше ⚪ «Екрана не чути — востаннє …». WebSocket
+закрився — «не чути» одразу (перепідключиться — знову «на зв'язку»). Новий ключ — «не чути», доки програма не прийде
+з ним: зі старим її вже не пускає. Нічого окремо для цього програмі робити не треба.
 
 ## 7. Для розробки
 

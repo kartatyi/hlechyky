@@ -315,4 +315,45 @@ public class ScreenTests
         Assert.False(Online(s.AdminView(false)));
         Assert.Null(s.AdminView(false).GetType().GetProperty("key")!.GetValue(s.AdminView(false)));
     }
+
+    static bool IsOnline(Screen s) => (bool)Prop(Prop(s.AdminView(false), "device")!, "online")!;
+
+    [Fact]
+    public void New_key_is_offline_until_the_screen_comes_with_it()
+    {
+        var (s, _, clock) = Make();
+        s.Seen();
+        Assert.True(IsOnline(s));
+        s.NewDeviceKey();
+        Assert.False(IsOnline(s));       // що було зі старим ключем, «на зв'язку» не тримає
+        clock.Advance(1);
+        s.Seen();                        // прийшов уже з новим
+        Assert.True(IsOnline(s));
+    }
+
+    [Fact]
+    public void Closed_socket_goes_offline_at_once_but_a_long_poll_lingers()
+    {
+        var (s, _, clock) = Make();
+        var heard = 0;
+        s.AdminChanged += _ => heard++;
+        var socket = s.Stream(lingers: false);
+        clock.Advance(TimeSpan.FromMinutes(10));
+        var before = heard;
+        socket.Dispose();
+        Assert.False(IsOnline(s));
+        Assert.Equal(before + 1, heard);   // вкладки адміна дізнались одразу, а не з перепиту за 15 с
+
+        var poll = s.Stream();
+        clock.Advance(TimeSpan.FromMinutes(10));
+        poll.Dispose();
+        Assert.True(IsOnline(s));          // опитування за мить прийде знову
+
+        clock.Advance(Screen.SeenFresh + TimeSpan.FromSeconds(1));
+        var stale = s.Stream();
+        s.NewDeviceKey();
+        clock.Advance(1);
+        stale.Dispose();                   // чекало зі старим ключем — уже не рахується
+        Assert.False(IsOnline(s));
+    }
 }

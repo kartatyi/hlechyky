@@ -74,6 +74,16 @@ public sealed class Screen
     /// <summary>Та сама температура частіше за це адмінам не розсилається (змінилась — розсилаємо одразу).</summary>
     static readonly TimeSpan TempEcho = TimeSpan.FromSeconds(15);
 
+    /// <summary>
+    /// WebSocket: раз на стільки сервер пінгує екран, і стільки чекає на понг — не дочекався, з'єднання рве. Без цього
+    /// застигла програма (сокет відкритий, а сама не читає) лишалась «на зв'язку» навіки, і зміни йшли в порожнечу.
+    /// Тести ставлять менші — до <see cref="Map"/>.
+    /// </summary>
+    public TimeSpan PingEvery { get; set; } = TimeSpan.FromSeconds(20);
+    public TimeSpan PongWait { get; set; } = TimeSpan.FromSeconds(20);
+    /// <summary>Скільки чекати, поки екран підтвердить закриття (ключ змінили): не підтвердив — обриваємо.</summary>
+    public TimeSpan CloseWait { get; set; } = TimeSpan.FromSeconds(5);
+
     readonly IGameStore _store;
     readonly IClock _clock;
     readonly ILogger<Screen> _log;
@@ -83,6 +93,7 @@ public sealed class Screen
     TaskCompletionSource _changed = NewSignal();
     int _streams;              // відкриті WebSocket-и й довгі опитування, що зараз чекають
     DateTimeOffset? _seenAt;   // останній запит екрана будь-яким способом
+    DateTimeOffset? _keyAt;    // коли востаннє міняли ключ (лише в пам'яті)
     long _measureSeq;          // номер останнього запиту виміру
     readonly List<ScreenMeasure> _measures = [];
     (double Value, DateTimeOffset At)? _temp;   // остання температура від програми — лише в пам'яті
@@ -287,6 +298,7 @@ public sealed class Screen
         lock (_gate)
         {
             _key = NewKey();
+            _keyAt = _clock.UtcNow;   // що екран робив зі старим ключем, «на зв'язку» вже не тримає
             old = _changed;
             _changed = NewSignal();
         }
@@ -321,6 +333,10 @@ public sealed class Screen
         return State;
     }
 
+    /// <summary>«На зв'язку»: тримає з'єднання або звертався недавно — і вже з теперішнім ключем. Лише під <c>_gate</c>.</summary>
+    bool OnlineLocked(DateTimeOffset now) =>
+        _streams > 0 || (_seenAt is { } t && now - t <= SeenFresh && (_keyAt is not { } k || t > k));
+
     /// <summary>Екран щойно звернувся (будь-яким способом).</summary>
     public void Seen()
     {
@@ -328,31 +344,40 @@ public sealed class Screen
         lock (_gate)
         {
             var now = _clock.UtcNow;
-            cameBack = _streams == 0 && (_seenAt is null || now - _seenAt > SeenFresh);
+            cameBack = !OnlineLocked(now);
             _seenAt = now;
         }
         if (cameBack) AdminChanged?.Invoke(AdminView(withKey: false));
     }
 
-    /// <summary>Екран тримає з'єднання (WebSocket чи довге опитування). Dispose — відпустив.</summary>
-    public IDisposable Stream()
+    /// <summary>
+    /// Екран тримає з'єднання (WebSocket чи довге опитування). Dispose — відпустив. <paramref name="lingers"/> — довге
+    /// опитування: за мить прийде знову, тож ще <see cref="SeenFresh"/> «на зв'язку»; WebSocket закрився — то вже й ні
+    /// (повернеться — скаже сам). Ключ, з яким прийшов, за цей час змінили — теж ні.
+    /// </summary>
+    public IDisposable Stream(bool lingers = true)
     {
         Seen();   // спершу «прийшов» (адміну — подія, якщо екран був зник), потім лічимо з'єднання
-        lock (_gate) _streams++;
-        return new Release(this);
+        string key;
+        lock (_gate) { _streams++; key = _key; }
+        return new Release(this, key, lingers);
     }
 
-    sealed class Release(Screen s) : IDisposable
+    sealed class Release(Screen s, string key, bool lingers) : IDisposable
     {
         int _done;
         public void Dispose()
         {
             if (Interlocked.Exchange(ref _done, 1) == 1) return;
+            bool gone;
             lock (s._gate)
             {
                 s._streams--;
-                s._seenAt = s._clock.UtcNow;
+                var now = s._clock.UtcNow;
+                if (lingers && s._key == key) s._seenAt = now;
+                gone = !s.OnlineLocked(now);
             }
+            if (gone) s.AdminChanged?.Invoke(s.AdminView(withKey: false));   // вкладки адміна — одразу «Екрана не чути»
         }
     }
 
@@ -378,8 +403,8 @@ public sealed class Screen
         string key;
         ScreenMeasure[] measures;
         (double Value, DateTimeOffset At)? temp;
-        lock (_gate) { s = _state; streams = _streams; seen = _seenAt; key = _key; measures = [.. _measures]; temp = _temp; }
-        var online = streams > 0 || (seen is { } t && _clock.UtcNow - t <= SeenFresh);
+        bool online;
+        lock (_gate) { s = _state; streams = _streams; seen = _seenAt; key = _key; measures = [.. _measures]; temp = _temp; online = OnlineLocked(_clock.UtcNow); }
         return new
         {
             state = new
@@ -472,8 +497,10 @@ public sealed class Screen
         // UseWebSockets, щоб не чіпати налаштувань хаба SignalR.
         app.Map(new PathString("/api/screen/ws"), b =>
         {
-            b.UseWebSockets(new WebSocketOptions { KeepAliveInterval = TimeSpan.FromSeconds(20) });
-            b.Run(c => c.RequestServices.GetRequiredService<Screen>().ServeSocket(c));
+            // Пінг із дедлайном: не відповів на понг за PongWait — сокет обривається, екран перестає бути «на зв'язку».
+            var screen = b.ApplicationServices.GetRequiredService<Screen>();
+            b.UseWebSockets(new WebSocketOptions { KeepAliveInterval = screen.PingEvery, KeepAliveTimeout = screen.PongWait });
+            b.Run(screen.ServeSocket);
         });
     }
 
@@ -494,7 +521,7 @@ public sealed class Screen
         var key = DeviceKeyOf(c);
         using var ws = await c.WebSockets.AcceptWebSocketAsync();
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(c.RequestAborted);
-        using var hold = Stream();
+        using var hold = Stream(lingers: false);
         // Слухаємо екран: він може слати звіти (той самий JSON, що й POST /api/screen/device, без відповіді), а ще так
         // видно, що з'єднання закрили, — і тоді виходимо.
         var reader = Task.Run(async () =>
@@ -507,6 +534,7 @@ public sealed class Screen
                 {
                     var r = await ws.ReceiveAsync(buf, stop.Token);
                     if (r.MessageType == WebSocketMessageType.Close) break;
+                    if (!KeyOk(key)) break;   // ключ змінили — від старого вже нічого не беремо (закриє цикл нижче)
                     Seen();
                     if (r.MessageType != WebSocketMessageType.Text) continue;
                     if (msg.Length + r.Count <= 16 * 1024) msg.Write(buf, 0, r.Count);
@@ -532,7 +560,7 @@ public sealed class Screen
             while (!stop.IsCancellationRequested && ws.State == WebSocketState.Open)
             {
                 var st = await WaitAsync(sent, TimeSpan.FromSeconds(30), stop.Token);
-                if (!KeyOk(key)) { await ws.CloseAsync(WebSocketCloseStatus.PolicyViolation, "key changed", CancellationToken.None); break; }
+                if (!KeyOk(key)) { await CloseQuietly(ws, WebSocketCloseStatus.PolicyViolation, "key changed"); break; }
                 if (st.Rev == sent) continue;
                 var bytes = JsonSerializer.SerializeToUtf8Bytes(DeviceView(st), Web);
                 await ws.SendAsync(bytes, WebSocketMessageType.Text, true, stop.Token);
@@ -546,11 +574,19 @@ public sealed class Screen
         {
             stop.Cancel();
             try { await reader; } catch { }
-            if (ws.State is WebSocketState.Open or WebSocketState.CloseReceived)
-            {
-                try { await ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "bye", CancellationToken.None); } catch { }
-            }
+            if (ws.State is WebSocketState.Open or WebSocketState.CloseReceived) await CloseQuietly(ws, WebSocketCloseStatus.NormalClosure, "bye");
         }
+    }
+
+    /// <summary>
+    /// Закрити чемно, але не чекати вічно: застигла програма на закриття не відповідає, і без строку з'єднання
+    /// висіло б (а екран — «на зв'язку») аж до її перезапуску.
+    /// </summary>
+    async Task CloseQuietly(WebSocket ws, WebSocketCloseStatus status, string why)
+    {
+        using var wait = new CancellationTokenSource(CloseWait);
+        try { await ws.CloseAsync(status, why, wait.Token); }
+        catch { ws.Abort(); }
     }
 }
 
