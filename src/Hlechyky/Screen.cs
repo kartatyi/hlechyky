@@ -31,16 +31,18 @@ public sealed record ScreenMeasureAsk(long Id, DateTimeOffset At, string? By, in
 
 /// <summary>
 /// Вимір кольору від програми: координати xy (CIE 1931) і корельована колірна температура в кельвінах; що екран
-/// показував (на мить запиту) і <see cref="Changed"/> — чи міняли налаштування, поки міряло.
+/// показував (на мить запиту) і <see cref="Changed"/> — чи міняли налаштування, поки міряло. <see cref="Lum"/> — яскравість
+/// з колориметра, кд/м² (необов'язкова: старі виміри й програми без неї — null).
 /// </summary>
 public sealed record ScreenMeasure(long Id, double X, double Y, double K, DateTimeOffset At, int Brightness, int R, int G, int B, bool Calibration,
-    DateTimeOffset? AskedAt = null, bool Changed = false);
+    DateTimeOffset? AskedAt = null, bool Changed = false, double? Lum = null);
 
 /// <summary>Що пише програма екрана: температуру (°C) і/або вимір кольору. Чого нема — не чіпаємо.</summary>
 public sealed record ScreenReport(double? Temperature = null, ScreenMeasureReport? Measure = null);
 
 /// <summary>Вимір у звіті. <see cref="Id"/> — з запиту (<c>measure.id</c> у стані); нема — відповідь на поточний запит або вимір «сам».</summary>
-public sealed record ScreenMeasureReport(long? Id = null, double? X = null, double? Y = null, double? K = null);
+/// <see cref="Lum"/> (або <see cref="Luminance"/>) — яскравість з колориметра, кд/м², необов'язкова.
+public sealed record ScreenMeasureReport(long? Id = null, double? X = null, double? Y = null, double? K = null, double? Lum = null, double? Luminance = null);
 
 /// <summary>
 /// 🖥 Віддалений екран (вкладка «Екран» у Бібліотеці, docs/screen.md). Адмін міняє яскравість, колір (R/G/B), пресет і
@@ -240,12 +242,15 @@ public sealed class Screen
         if (r.Temperature is null && r.Measure is null) return "Порожній звіт: чекаю temperature і/або measure";
         if (r.Temperature is { } t && (!double.IsFinite(t) || t < -100 || t > 300)) return "temperature — градуси Цельсія, від −100 до 300";
         double x = 0, y = 0, k = 0;
+        double? lum = null;
         if (r.Measure is { } m)
         {
             if (m.X is not { } mx || m.Y is not { } my || m.K is not { } mk) return "measure: потрібні x, y і k";
             if (!double.IsFinite(mx) || !double.IsFinite(my) || mx < 0 || mx > 1 || my < 0 || my > 1) return "measure: x і y — від 0 до 1";
             if (!double.IsFinite(mk) || mk <= 0 || mk > 1_000_000) return "measure: k — кельвіни, більше 0";
             (x, y, k) = (mx, my, mk);
+            lum = m.Lum ?? m.Luminance;
+            if (lum is { } l && (!double.IsFinite(l) || l < 0 || l > 1_000_000)) return "measure: lum — кд/м², від 0";
         }
         var tell = false;
         var save = false;
@@ -263,9 +268,10 @@ public sealed class Screen
                 // Запізніла (запит уже замінили чи скасували) чи «сама» — те, що зараз.
                 var ask = pending is not null && pending.Id == id ? pending : null;
                 _measures.Insert(0, ask is null
-                    ? new ScreenMeasure(id, x, y, k, now, s.Brightness, s.R, s.G, s.B, s.Calibration)
+                    ? new ScreenMeasure(id, x, y, k, now, s.Brightness, s.R, s.G, s.B, s.Calibration, Lum: lum)
                     : new ScreenMeasure(id, x, y, k, now, ask.Brightness, ask.R, ask.G, ask.B, ask.Calibration, ask.At,
-                        Changed: ask.Brightness != s.Brightness || ask.R != s.R || ask.G != s.G || ask.B != s.B || ask.Calibration != s.Calibration));
+                        Changed: ask.Brightness != s.Brightness || ask.R != s.R || ask.G != s.G || ask.B != s.B || ask.Calibration != s.Calibration,
+                        Lum: lum));
                 if (_measures.Count > MaxMeasures) _measures.RemoveRange(MaxMeasures, _measures.Count - MaxMeasures);
                 if (pending is not null && pending.Id == id)
                 {
@@ -390,7 +396,7 @@ public sealed class Screen
 
     static object MeasureView(ScreenMeasure m) => new
     {
-        id = m.Id, x = m.X, y = m.Y, k = m.K, at = m.At, askedAt = m.AskedAt, changed = m.Changed,
+        id = m.Id, x = m.X, y = m.Y, k = m.K, lum = m.Lum, at = m.At, askedAt = m.AskedAt, changed = m.Changed,
         brightness = m.Brightness, r = m.R, g = m.G, b = m.B, calibration = m.Calibration,
     };
 

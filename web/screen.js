@@ -348,6 +348,7 @@
       res.innerHTML = `<span class="scr-mdot" style="background:${xyCss(top.x, top.y)}"></span>`
         + `<span class="scr-mval"><b>x</b> ${num(top.x, 4)}</span><span class="scr-mval"><b>y</b> ${num(top.y, 4)}</span>`
         + `<span class="scr-mval scr-mk">${Math.round(top.k)} K</span>`
+        + (top.lum != null ? `<span class="scr-mval">☀ ${lumText(top.lum)} <b>кд/м²</b></span>` : '')
         + `<span class="muted small scr-mwhen">${top.id ? '№' + top.id + ' · ' : ''}${when(top.at, true)}`
         + `${top.askedAt ? ' · міряло ' + span(top.askedAt, top.at) : ''} · ${showsWhat(top)}</span>`
         + (top.changed ? '<span class="scr-mwarn">⚠ поки міряло, налаштування екрана міняли — вимір про те, що було на старті</span>' : '');
@@ -361,8 +362,12 @@
     q('[data-el="mlist"]').innerHTML = list.slice(1, 10).map((m) =>
       `<li><span class="scr-mdot sm" style="background:${xyCss(m.x, m.y)}"></span>`
       + `<span>${num(m.x, 4)}, ${num(m.y, 4)}</span><b>${Math.round(m.k)} K</b>`
+      + (m.lum != null ? `<span>☀ ${lumText(m.lum)} кд/м²</span>` : '')
       + `<span class="muted">${when(m.at, true)} · ${showsWhat(m)}${m.changed ? ' · ⚠ міняли під час виміру' : ''}</span></li>`).join('');
   }
+
+  // Яскравість з колориметра: мале — з десятими, велике — цілим
+  function lumText(v) { return v < 100 ? num(v, v < 10 ? 2 : 1) : String(Math.round(v)); }
 
   function wire() {
     for (const [f, spec] of Object.entries(FIELDS)) {
